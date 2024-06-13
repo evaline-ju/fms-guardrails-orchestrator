@@ -11,15 +11,16 @@ use axum::{
     Json, Router,
 };
 use futures::StreamExt;
+use futures_util::pin_mut;
 use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use rustls::server::WebPkiClientVerifier;
 use rustls::RootCertStore;
 use rustls::ServerConfig;
-use tokio::{net::TcpListener, signal};
+use tokio::{net::TcpListener, signal, sync::watch};
 use tokio_rustls::TlsAcceptor;
 use tower_service::Service;
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 use uuid::Uuid;
 use webpki::types::{CertificateDer, PrivateKeyDer};
 
@@ -112,6 +113,15 @@ pub async fn run(
         )
         .with_state(shared_state);
 
+    let (signal_tx, signal_rx) = watch::channel(());
+    let signal_tx = Arc::new(signal_tx);
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        trace!("received graceful shutdown signal. Telling tasks to shutdown");
+        drop(signal_rx);
+    });
+    let (close_tx, close_rx) = watch::channel(());
+
     // Launch each app as a separate task
     let listener: TcpListener = TcpListener::bind(&http_addr)
         .await
@@ -124,15 +134,15 @@ pub async fn run(
         let tls_acceptor = TlsAcceptor::from(arc_server_config.unwrap());
         tokio::spawn(async move {
             // TODO: Not sure this graceful shutdown works
-            let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+            //let graceful = hyper_util::server::graceful::GracefulShutdown::new();
             let builder = hyper_util::server::conn::auto::Builder::new(TokioExecutor::new());
-            let mut signal = std::pin::pin!(shutdown_signal());
+            //let mut signal = std::pin::pin!(shutdown_signal());
             loop {
                 let tower_service = app.clone();
                 let tls_acceptor = tls_acceptor.clone();
 
                 // Wait for new tcp connection
-                let (cnx, addr) = listener.accept().await.unwrap();
+                let (cnx, _) = listener.accept().await.unwrap();
 
                 // Wait for tls handshake
                 let stream = tokio::select! {
@@ -145,8 +155,12 @@ pub async fn run(
                             }
                         }
                     }
-                    _ = &mut signal => {
-                        info!("graceful shutdown signal received");
+                    // _ = &mut signal => {
+                    //     info!("graceful shutdown signal received");
+                    //     break;
+                    // }
+                    _ = signal_tx.closed() => {
+                        trace!("signal received, not accepting new connections");
                         break;
                     }
                 };
@@ -160,23 +174,41 @@ pub async fn run(
                         // tower's `Service` requires `&mut self`
                         tower_service.clone().call(request)
                     });
+                let signal_tx = Arc::clone(&signal_tx);
+                let close_rx = close_rx.clone();
                 let conn = builder.serve_connection_with_upgrades(stream, hyper_service);
-                let fut = graceful.watch(conn.into_owned());
-                tokio::spawn(async move {
-                    if let Err(err) = fut.await {
-                        warn!("error serving connection from {}: {}", addr, err);
+                pin_mut!(conn);
+                // let fut = graceful.watch(conn.into_owned());
+                // tokio::spawn(async move {
+                //     if let Err(err) = fut.await {
+                //         warn!("error serving connection from {}: {}", addr, err);
+                //     }
+                // });
+                let signal_closed = signal_tx.closed();
+                pin_mut!(signal_closed);
+                loop {
+                    tokio::select! {
+                        result = conn.as_mut() => {
+                            if let Err(_err) = result {
+                                trace!("failed to serve connection: {_err:#}");
+                            }
+                            break;
+                        }
+                        _ = &mut signal_closed => {
+                            trace!("signal received in task, starting graceful shutdown");
+                            conn.as_mut().graceful_shutdown();
+                        }
                     }
-                });
-            }
-
-            tokio::select! {
-                () = graceful.shutdown() => {
-                    info!("Gracefully shutdown!");
-                },
-                () = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
-                    info!("Waited 10 seconds for graceful shutdown, aborting...");
                 }
+                drop(close_rx);
             }
+            drop(close_rx);
+            drop(listener);
+            trace!(
+                "waiting for {} task(s) to finish",
+                close_tx.receiver_count()
+            );
+            close_tx.closed().await;
         })
     } else {
         // Non-TLS
