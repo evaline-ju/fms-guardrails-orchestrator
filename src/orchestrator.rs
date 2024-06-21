@@ -651,6 +651,7 @@ async fn generate_stream(
                 "received generate stream response"
             );
             tokio::spawn(async move {
+                let mut start_index: u32 = 0;
                 while let Some(response) = response_stream.next().await {
                     let updated_response = ClassifiedGeneratedTextStreamResult {
                         generated_text: Some(response.text.clone()),
@@ -673,10 +674,11 @@ async fn generate_stream(
                             input: None,
                             output: None,
                         },
-                        processed_index: Some(0), // TODO: keep track of this in default text gen case
-                        start_index: 0, // TODO: keep track of this in default text gen case
+                        processed_index: Some(response.generated_token_count),
+                        start_index,
                     };
                     let _ = tx.send(updated_response).await;
+                    start_index = response.generated_token_count;
                 }
             });
             Ok(ReceiverStream::new(rx))
@@ -732,6 +734,7 @@ async fn generate_stream(
                 "received generate stream response"
             );
             tokio::spawn(async move {
+                let mut start_index: u32 = 0;
                 while let Some(response) = response_stream.next().await {
                     let details = response.details.unwrap();
                     let updated_response = ClassifiedGeneratedTextStreamResult {
@@ -755,10 +758,11 @@ async fn generate_stream(
                             input: None,
                             output: None,
                         },
-                        processed_index: Some(0), // TODO: keep track of this in default text gen case
-                        start_index: 0, // TODO: keep track of this in default text gen case
+                        processed_index: Some(details.generated_tokens),
+                        start_index,
                     };
                     let _ = tx.send(updated_response).await;
+                    start_index = details.generated_tokens;
                 }
             });
             Ok(ReceiverStream::new(rx))
