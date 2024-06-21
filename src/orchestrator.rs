@@ -622,6 +622,7 @@ async fn generate_stream(
     params: Option<GuardrailsTextGenerationParameters>,
 ) -> Result<ReceiverStream<ClassifiedGeneratedTextStreamResult>, Error> {
     let generation_client = ctx.generation_client.clone();
+    let (tx, rx) = mpsc::channel(128);
     match generation_client {
         GenerationClient::Tgis(client) => {
             let params = params.map(Into::into);
@@ -649,7 +650,6 @@ async fn generate_stream(
                 ?response_stream,
                 "received generate stream response"
             );
-            let (tx, rx) = mpsc::channel(128);
             tokio::spawn(async move {
                 while let Some(response) = response_stream.next().await {
                     let updated_response = ClassifiedGeneratedTextStreamResult {
@@ -731,7 +731,6 @@ async fn generate_stream(
                 ?response_stream,
                 "received generate stream response"
             );
-            let (tx, rx) = mpsc::channel(128);
             tokio::spawn(async move {
                 while let Some(response) = response_stream.next().await {
                     let details = response.details.unwrap();
