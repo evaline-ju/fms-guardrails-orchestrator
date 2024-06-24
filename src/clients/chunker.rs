@@ -20,50 +20,29 @@ use crate::{
 };
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
+/// Default chunker that returns span for entire text
 const DEFAULT_MODEL_ID: &str = "whole_doc_chunker";
-
-#[derive(Clone)]
-pub enum ChunkerMapValue {
-    ChunkersServiceClient(ChunkersServiceClient<LoadBalancedChannel>),
-    String,
-}
 
 #[cfg_attr(test, derive(Default))]
 #[derive(Clone)]
 pub struct ChunkerClient {
-    clients: HashMap<String, ChunkerMapValue>,
+    clients: HashMap<String, ChunkersServiceClient<LoadBalancedChannel>>,
 }
 
 impl ChunkerClient {
     pub async fn new(default_port: u16, config: &[(String, ServiceConfig)]) -> Self {
-        let orig_clients =
-            create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;
-        let mut clients: HashMap<String, ChunkerMapValue> = HashMap::new();
-        for (key, value) in orig_clients.into_iter() {
-            clients.insert(key, ChunkerMapValue::ChunkersServiceClient(value));
-        }
-        // TODO: add "default" client for "default model"
+        let clients = create_grpc_clients(default_port, config, ChunkersServiceClient::new).await;
         Self { clients }
     }
 
-    // Expect this to be called only in non-default chunker "client" case
     fn client(&self, model_id: &str) -> Result<ChunkersServiceClient<LoadBalancedChannel>, Error> {
-        // Could this potentially be collapsed?
-        let client = self.clients.get(model_id);
-        match client {
-            Some(value) => {
-                if let ChunkerMapValue::ChunkersServiceClient(client) = value {
-                    Ok(client.clone())
-                } else {
-                    Err(Error::ModelNotFound {
-                        model_id: model_id.to_string(),
-                    })
-                }
-            }
-            None => Err(Error::ModelNotFound {
+        Ok(self
+            .clients
+            .get(model_id)
+            .ok_or_else(|| Error::ModelNotFound {
                 model_id: model_id.to_string(),
-            }),
-        }
+            })?
+            .clone())
     }
 
     pub async fn tokenization_task_predict(
@@ -93,6 +72,7 @@ impl ChunkerClient {
         let (tx, rx) = mpsc::channel(128);
         // Handle "default" separately first
         // if model_id == DEFAULT_MODEL_ID {
+        //    info!("Using default whole doc chunker");
         //     let response_stream = bidi_streaming_tokenize_whole_doc(request);
         //     tokio::spawn(async move {
         //         while let Ok(message) = response_stream.await {
