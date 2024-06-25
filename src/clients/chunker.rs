@@ -63,7 +63,6 @@ impl ChunkerClient {
             .into_inner())
     }
 
-    // NOTE: probably untested through o8 so far
     pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
@@ -71,16 +70,16 @@ impl ChunkerClient {
     ) -> Result<ReceiverStream<TokenizationStreamResult>, Error> {
         let (tx, rx) = mpsc::channel(128);
         // Handle "default" separately first
-        // if model_id == DEFAULT_MODEL_ID {
-        //    info!("Using default whole doc chunker");
-        //     let response_stream = bidi_streaming_tokenize_whole_doc(request);
-        //     tokio::spawn(async move {
-        //         while let Ok(message) = response_stream.await {
-        //             let _ = tx.send(message).await;
-        //         }
-        //     });
-        //     return Ok(ReceiverStream::new(rx));
-        // }
+        if model_id == DEFAULT_MODEL_ID {
+            info!("Using default whole doc chunker");
+            let whole_response_stream = bidi_streaming_tokenize_whole_doc(request);
+            tokio::spawn(async move {
+                if let Ok(message) = whole_response_stream.await {
+                    let _ = tx.send(message).await;
+                }
+            });
+            return Ok(ReceiverStream::new(rx));
+        }
         let request = request_with_model_id(request, model_id);
         let mut response_stream = self
             .client(model_id)?
@@ -104,6 +103,7 @@ fn request_with_model_id<T>(request: T, model_id: &str) -> Request<T> {
     request
 }
 
+/// Unary tokenization result of the entire doc
 fn tokenize_whole_doc(request: TokenizationTaskRequest) -> TokenizationResults {
     let token_count = request.text.chars().count();
     TokenizationResults {
@@ -116,22 +116,28 @@ fn tokenize_whole_doc(request: TokenizationTaskRequest) -> TokenizationResults {
     }
 }
 
+/// Streaming tokenization result for an entire stream
+// Note: This doesn't return an actual "stream" because the entire input text stream
+// to the chunker has to be accumulated and processed. Only one result for the whole
+// stream doc is provided. Depending on stream size, this can be memory intensive.
 async fn bidi_streaming_tokenize_whole_doc(
-    _request: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send + 'static>>,
+    mut request: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send + 'static>>,
 ) -> Result<TokenizationStreamResult, Error> {
-    // TODO: this will have to do aggregation and actually process the request
-    let token_count = 120; // FIXME
-    let accumulated_text = "hi"; // FIXME
-                                 // TODO: error handling
-                                 // TODO: Return a stream?
+    let mut total_token_count = 0;
+    let mut accumulated_text: String = "".to_owned();
+    while let Some(stream_request) = request.next().await {
+        let token_count = stream_request.text_stream.chars().count();
+        total_token_count += token_count;
+        accumulated_text.push_str(stream_request.text_stream.as_str());
+    }
     Ok(TokenizationStreamResult {
         results: vec![Token {
             start: 0,
-            end: token_count,
-            text: accumulated_text.to_string(),
+            end: total_token_count as i64,
+            text: accumulated_text,
         }],
-        token_count,
-        processed_index: token_count,
+        token_count: total_token_count as i64,
+        processed_index: total_token_count as i64,
         start_index: 0,
     })
 }
