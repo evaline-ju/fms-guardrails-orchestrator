@@ -2,6 +2,8 @@ use std::{collections::HashMap, pin::Pin};
 
 use futures::{Future, Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
@@ -66,10 +68,10 @@ impl ChunkerClient {
         model_id: &str,
         request_stream: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send>>,
     ) -> Result<Pin<Box<dyn Stream<Item = TokenizationStreamResult> + Send>>, Error> {
-        let (tx, rx) = mpsc::channel(128);
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");
+            let (tx, rx) = mpsc::channel(128);
             let whole_response_stream = bidi_streaming_tokenize_whole_doc(request_stream).await;
             tokio::spawn(async move {
                 if let Ok(message) = whole_response_stream {
