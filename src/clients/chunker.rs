@@ -72,9 +72,9 @@ impl ChunkerClient {
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");
-            let whole_response_stream = bidi_streaming_tokenize_whole_doc(request);
+            let whole_response_stream = bidi_streaming_tokenize_whole_doc(request).await;
             tokio::spawn(async move {
-                if let Ok(message) = whole_response_stream.await {
+                if let Ok(message) = whole_response_stream {
                     let _ = tx.send(message).await;
                 }
             });
