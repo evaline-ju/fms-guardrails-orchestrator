@@ -1,5 +1,6 @@
-use futures::StreamExt;
-use tokio::sync::mpsc;
+use std::pin::Pin;
+
+use futures::{Stream, StreamExt};
 use tracing::debug;
 
 use super::{Error, NlpClient, TgisClient};
@@ -20,20 +21,33 @@ use crate::{
     },
 };
 
+#[cfg_attr(test, faux::create)]
 #[derive(Clone)]
-pub enum GenerationClient {
+pub struct GenerationClient(GenerationClientInner);
+
+#[derive(Clone)]
+enum GenerationClientInner {
     Tgis(TgisClient),
     Nlp(NlpClient),
 }
 
+#[cfg_attr(test, faux::methods)]
 impl GenerationClient {
+    pub fn tgis(client: TgisClient) -> Self {
+        Self(GenerationClientInner::Tgis(client))
+    }
+
+    pub fn nlp(client: NlpClient) -> Self {
+        Self(GenerationClientInner::Nlp(client))
+    }
+
     pub async fn tokenize(
         &self,
         model_id: String,
         text: String,
     ) -> Result<(u32, Vec<String>), Error> {
-        match self {
-            GenerationClient::Tgis(client) => {
+        match &self.0 {
+            GenerationClientInner::Tgis(client) => {
                 let request = BatchedTokenizeRequest {
                     model_id: model_id.clone(),
                     requests: vec![TokenizeRequest { text }],
@@ -47,7 +61,7 @@ impl GenerationClient {
                 let response = response.responses.swap_remove(0);
                 Ok((response.token_count, response.tokens))
             }
-            GenerationClient::Nlp(client) => {
+            GenerationClientInner::Nlp(client) => {
                 let request = TokenizationTaskRequest { text };
                 debug!(%model_id, provider = "nlp", ?request, "sending tokenize request");
                 let response = client.tokenization_task_predict(&model_id, request).await?;
@@ -68,8 +82,8 @@ impl GenerationClient {
         text: String,
         params: Option<GuardrailsTextGenerationParameters>,
     ) -> Result<ClassifiedGeneratedTextResult, Error> {
-        match self {
-            GenerationClient::Tgis(client) => {
+        match &self.0 {
+            GenerationClientInner::Tgis(client) => {
                 let params = params.map(Into::into);
                 let request = BatchedGenerationRequest {
                     model_id: model_id.clone(),
@@ -82,7 +96,7 @@ impl GenerationClient {
                 debug!(%model_id, provider = "tgis", ?response, "received generate response");
                 Ok(response.into())
             }
-            GenerationClient::Nlp(client) => {
+            GenerationClientInner::Nlp(client) => {
                 let request = if let Some(params) = params {
                     TextGenerationTaskRequest {
                         text,
@@ -128,10 +142,10 @@ impl GenerationClient {
         model_id: String,
         text: String,
         params: Option<GuardrailsTextGenerationParameters>,
-    ) -> Result<mpsc::Receiver<ClassifiedGeneratedTextStreamResult>, Error> {
-        let (tx, rx) = mpsc::channel(128);
-        match self {
-            GenerationClient::Tgis(client) => {
+    ) -> Result<Pin<Box<dyn Stream<Item = ClassifiedGeneratedTextStreamResult> + Send>>, Error>
+    {
+        match &self.0 {
+            GenerationClientInner::Tgis(client) => {
                 let params = params.map(Into::into);
                 let request = SingleGenerationRequest {
                     model_id: model_id.clone(),
@@ -140,15 +154,14 @@ impl GenerationClient {
                     params,
                 };
                 debug!(%model_id, provider = "tgis", ?request, "sending generate_stream request");
-                let mut response_stream = client.generate_stream(request).await?;
-                tokio::spawn(async move {
-                    while let Some(response) = response_stream.next().await {
-                        let _ = tx.send(response.into()).await;
-                    }
-                });
-                Ok(rx)
+                let response_stream = client
+                    .generate_stream(request)
+                    .await?
+                    .map(|resp| resp.into())
+                    .boxed();
+                Ok(response_stream)
             }
-            GenerationClient::Nlp(client) => {
+            GenerationClientInner::Nlp(client) => {
                 let request = if let Some(params) = params {
                     ServerStreamingTextGenerationTaskRequest {
                         text,
@@ -180,15 +193,12 @@ impl GenerationClient {
                     }
                 };
                 debug!(%model_id, provider = "nlp", ?request, "sending generate_stream request");
-                let mut response_stream = client
+                let response_stream = client
                     .server_streaming_text_generation_task_predict(&model_id, request)
-                    .await?;
-                tokio::spawn(async move {
-                    while let Some(response) = response_stream.next().await {
-                        let _ = tx.send(response.into()).await;
-                    }
-                });
-                Ok(rx)
+                    .await?
+                    .map(|resp| resp.into())
+                    .boxed();
+                Ok(response_stream)
             }
         }
     }
