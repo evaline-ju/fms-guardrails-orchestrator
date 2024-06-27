@@ -1,10 +1,10 @@
 use std::{collections::HashMap, pin::Pin};
 
-use futures::{Stream, StreamExt};
+use futures::{Future, Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tonic::Request;
+use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
 use super::{create_grpc_clients, Error};
@@ -18,6 +18,8 @@ use crate::{
         caikit_data_model::nlp::{Token, TokenizationResults, TokenizationStreamResult},
     },
 };
+
+type StreamingTokenizationResult = Result<Response<Streaming<TokenizationStreamResult>>, Status>;
 
 const MODEL_ID_HEADER_NAME: &str = "mm-model-id";
 /// Default chunker that returns span for entire text
@@ -66,32 +68,37 @@ impl ChunkerClient {
     pub async fn bidi_streaming_tokenization_task_predict(
         &self,
         model_id: &str,
-        request: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send + 'static>>,
-    ) -> Result<ReceiverStream<TokenizationStreamResult>, Error> {
-        let (tx, rx) = mpsc::channel(128);
+        request_stream: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send>>,
+    ) -> Result<Pin<Box<dyn Stream<Item = TokenizationStreamResult> + Send>>, Error> {
         // Handle "default" separately first
         if model_id == DEFAULT_MODEL_ID {
             info!("Using default whole doc chunker");
-            let whole_response_stream = bidi_streaming_tokenize_whole_doc(request).await;
+            let (tx, rx) = mpsc::channel(128);
+            let whole_response_stream = bidi_streaming_tokenize_whole_doc(request_stream).await;
             tokio::spawn(async move {
                 if let Ok(message) = whole_response_stream {
                     let _ = tx.send(message).await;
                 }
             });
-            return Ok(ReceiverStream::new(rx));
+            return Ok(ReceiverStream::new(rx).boxed());
         }
-        let request = request_with_model_id(request, model_id);
-        let mut response_stream = self
-            .client(model_id)?
-            .bidi_streaming_tokenization_task_predict(request)
+        let mut client = self.client(model_id)?;
+        // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
+        // See the following tracking issue for additional details.
+        // https://github.com/rust-lang/rust/issues/110338
+        let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
+            Box::pin(
+                client.bidi_streaming_tokenization_task_predict(request_with_model_id(
+                    request_stream,
+                    model_id,
+                )),
+            );
+        let response_stream = response_stream_fut
             .await?
-            .into_inner();
-        tokio::spawn(async move {
-            while let Some(Ok(message)) = response_stream.next().await {
-                let _ = tx.send(message).await;
-            }
-        });
-        Ok(ReceiverStream::new(rx))
+            .into_inner()
+            .map(|resp| resp.unwrap())
+            .boxed();
+        Ok(response_stream)
     }
 }
 

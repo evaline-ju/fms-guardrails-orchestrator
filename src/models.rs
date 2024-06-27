@@ -571,6 +571,25 @@ pub struct GeneratedTextStreamResult {
     pub input_tokens: Option<Vec<GeneratedToken>>,
 }
 
+/// Streaming result of a text generation model
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct Token {
+    pub start: u64,
+    pub end: u64,
+    pub text: String,
+}
+
+/// Streaming tokenization result
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "conversion", derive(frunk::LabelledGeneric))]
+pub struct TokenizationStreamResult {
+    pub results: Vec<Token>,
+    pub token_count: u64,
+    pub processed_index: u64,
+    pub start_index: u64,
+}
+
 impl From<ExponentialDecayLengthPenalty> for pb::fmaas::decoding_parameters::LengthPenalty {
     fn from(value: ExponentialDecayLengthPenalty) -> Self {
         Self {

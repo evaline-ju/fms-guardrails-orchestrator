@@ -1,10 +1,11 @@
 pub mod errors;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, pin::Pin, sync::Arc};
 
 pub use errors::Error;
 use futures::{
     future::try_join_all,
-    stream::{self, StreamExt},
+    stream::{self, Stream},
+    StreamExt,
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
@@ -20,11 +21,15 @@ use crate::{
     models::{
         ClassifiedGeneratedTextResult, ClassifiedGeneratedTextStreamResult, DetectorParams,
         GuardrailsConfig, GuardrailsHttpRequest, GuardrailsTextGenerationParameters, InputWarning,
-        InputWarningReason, TextGenTokenClassificationResults, TokenClassificationResult,
+        InputWarningReason, TextGenTokenClassificationResults, Token, TokenClassificationResult,
+        TokenizationStreamResult,
     },
     pb::{
         caikit::runtime::{
-            chunkers::TokenizationTaskRequest as ChunkersTokenizationTaskRequest,
+            chunkers::{
+                BidiStreamingTokenizationTaskRequest,
+                TokenizationTaskRequest as ChunkersTokenizationTaskRequest,
+            },
             nlp::{
                 ServerStreamingTextGenerationTaskRequest, TextGenerationTaskRequest,
                 TokenizationTaskRequest,
@@ -77,6 +82,7 @@ impl Orchestrator {
             "handling unary task"
         );
         let ctx = self.ctx.clone();
+
         let task_handle = tokio::spawn(async move {
             let masks = task.guardrails_config.input_masks();
             let input_detectors = task.guardrails_config.input_detectors();
@@ -164,10 +170,12 @@ impl Orchestrator {
     }
 
     /// Handles streaming tasks.
+    #[allow(clippy::type_complexity)]
+    #[allow(clippy::let_underscore_future)]
     pub async fn handle_streaming_classification_with_gen(
         &self,
         task: StreamingClassificationWithGenTask,
-    ) -> Result<ReceiverStream<ClassifiedGeneratedTextStreamResult>, Error> {
+    ) -> Result<Pin<Box<dyn Stream<Item = TokenizationStreamResult> + Send>>, Error> {
         info!(
             request_id = ?task.request_id,
             model_id = %task.model_id,
@@ -176,20 +184,92 @@ impl Orchestrator {
         );
         let ctx = self.ctx.clone();
         let task_handle: tokio::task::JoinHandle<
-            Result<ReceiverStream<ClassifiedGeneratedTextStreamResult>, _>,
+            Result<Pin<Box<dyn Stream<Item = TokenizationStreamResult> + Send>>, _>,
         > = tokio::spawn(async move {
             // TODO: Do input detections
             // TODO: results will eventually have to be mutable
-            let generation_results = generate_stream(
-                ctx.clone(),
-                task.model_id.clone(),
-                task.inputs.clone(),
-                task.text_gen_parameters.clone(),
-            )
-            .await?;
-            debug!(?generation_results);
-            // TODO: Do output detections
-            Ok(generation_results)
+            // let generation_results = generate_stream(
+            //     ctx.clone(),
+            //     task.model_id.clone(),
+            //     task.inputs.clone(),
+            //     task.text_gen_parameters.clone(),
+            // )
+            // .await?;
+            // debug!(?generation_results);
+            // // TODO: Do output detections
+            // Ok(generation_results)
+
+            // let (int_sender, int_receiver) = broadcast::channel(1024);
+            // let result = ClassifiedGeneratedTextResult {
+            //     generated_text: Some(
+            //         "I am just a test doc. Whatever happens doesn't matter".to_string(),
+            //     ),
+            //     token_classification_results: TextGenTokenClassificationResults {
+            //         input: None,
+            //         output: None,
+            //     },
+            //     finish_reason: Some(FinishReason::NotFinished),
+            //     generated_token_count: Some(9),
+            //     seed: Some(0),
+            //     input_token_count: 3,
+            //     warnings: None,
+            //     tokens: None,
+            //     input_tokens: None,
+            // };
+            // int_sender.send(result.clone());
+            // int_sender.send(result.clone());
+            // //let input_stream = BroadcastStream::new(int_receiver);
+            // let input_stream = BroadcastStream::new(int_receiver)
+            //     .map(|result| {
+            //         let result = result.unwrap();
+            //         BidiStreamingTokenizationTaskRequest {
+            //             text_stream: result.generated_text.unwrap_or_default(),
+            //         }
+            //     })
+            //     .boxed();
+            let one = BidiStreamingTokenizationTaskRequest {
+                text_stream: "I am just a test doc. Whatever happens doesn't matter. ".to_string(),
+            };
+            let two = BidiStreamingTokenizationTaskRequest {
+                text_stream: "I am just a test doc. Whatever happens doesn't matter".to_string(),
+            };
+            let input_stream = Box::pin(stream::iter(vec![one, two]));
+            let chunker_id = "whole_doc_chunker";
+            //let chunker_id = "sentence_syntax_izumo_en_stock_chunker";
+            let mut output_stream = ctx
+                .chunker_client
+                .bidi_streaming_tokenization_task_predict(chunker_id, input_stream)
+                .await
+                .map_err(|error| Error::ChunkerRequestFailed {
+                    chunker_id: chunker_id.to_string(),
+                    error,
+                })?;
+            let (chunk_tx, chunk_rx) = mpsc::channel(1024);
+            tokio::spawn({
+                let chunk_tx = chunk_tx.clone();
+                async move {
+                    while let Some(chunk_result) = output_stream.next().await {
+                        let mut token_results = Vec::new();
+                        for res in chunk_result.results.into_iter() {
+                            token_results.push(Token {
+                                start: res.start as u64,
+                                end: res.end as u64,
+                                text: res.text,
+                            })
+                        }
+                        let mod_result = TokenizationStreamResult {
+                            results: token_results,
+                            token_count: chunk_result.token_count as u64,
+                            processed_index: chunk_result.processed_index as u64,
+                            start_index: chunk_result.start_index as u64,
+                        };
+                        info!("Mod result {:?}", mod_result);
+
+                        let _ = chunk_tx.send(mod_result);
+                    }
+                }
+            });
+            Ok(ReceiverStream::new(chunk_rx).boxed())
         });
         match task_handle.await {
             // Task completed successfully
@@ -618,6 +698,7 @@ async fn generate(
 }
 
 /// Sends generate stream request to a generation service.
+#[allow(dead_code)]
 async fn generate_stream(
     ctx: Arc<Context>,
     model_id: String,
