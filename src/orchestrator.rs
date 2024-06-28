@@ -184,6 +184,8 @@ impl StreamingClassificationWithGenTask {
 
 #[cfg(test)]
 mod tests {
+    use clients::detector::ContentAnalysisResponse;
+
     use super::*;
 
     #[test]
