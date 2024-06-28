@@ -2,6 +2,8 @@ use std::{collections::HashMap, pin::Pin};
 
 use futures::{Future, Stream, StreamExt};
 use ginepro::LoadBalancedChannel;
+use tokio::sync::mpsc;
+use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status, Streaming};
 use tracing::info;
 
@@ -68,19 +70,16 @@ impl ChunkerClient {
         request_stream: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send>>,
     ) -> Result<Pin<Box<dyn Stream<Item = Result<TokenizationStreamResult, Status>> + Send>>, Error>
     {
-        // Handle "default" separately first - FIXME type updates here!!
-        // if model_id == DEFAULT_MODEL_ID {
-        //     info!("Using default whole doc chunker");
-        //     let (tx, rx) = mpsc::channel(128);
-        //     let whole_response_stream = bidi_streaming_tokenize_whole_doc(request_stream).await;
-        //     tokio::spawn(async move {
-        //         let _ = tx.send(whole_response_stream).await;
-        //         if let Ok(message) = whole_response_stream {
-
-        //         }
-        //     });
-        //     return Ok(ReceiverStream::new(rx).boxed());
-        // }
+        // Handle "default" separately first
+        if model_id == DEFAULT_MODEL_ID {
+            info!("Using default whole doc chunker");
+            let (tx, rx) = mpsc::channel(128);
+            let whole_response_stream = bidi_streaming_tokenize_whole_doc(request_stream).await;
+            tokio::spawn(async move {
+                let _ = tx.send(whole_response_stream).await;
+            });
+            return Ok(ReceiverStream::new(rx).boxed());
+        }
         let mut client = self.client(model_id)?;
         let request: Request<
             Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send>>,
@@ -120,7 +119,7 @@ fn tokenize_whole_doc(request: TokenizationTaskRequest) -> TokenizationResults {
 // stream doc is provided. Depending on stream size, this can be memory intensive.
 async fn bidi_streaming_tokenize_whole_doc(
     mut request_stream: Pin<Box<dyn Stream<Item = BidiStreamingTokenizationTaskRequest> + Send>>,
-) -> Result<TokenizationStreamResult, Error> {
+) -> Result<TokenizationStreamResult, Status> {
     let mut total_codepoint_count = 0;
     let mut accumulated_text: String = "".to_owned();
     while let Some(stream_request) = request_stream.next().await {
