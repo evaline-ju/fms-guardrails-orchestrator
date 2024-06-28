@@ -334,7 +334,10 @@ async fn generate(
 mod tests {
     use super::*;
     use crate::{
-        clients::{ChunkerClient, DetectorClient, GenerationClient, TgisClient},
+        clients::{
+            detector::ContentAnalysisResponse, ChunkerClient, DetectorClient, GenerationClient,
+            TgisClient,
+        },
         config::OrchestratorConfig,
         models::FinishReason,
         pb::fmaas::{
@@ -426,7 +429,7 @@ mod tests {
     /// 2. detections below the threshold are not returned to the client.
     #[tokio::test]
     async fn test_detect() {
-        let mock_generation_client = GenerationClient::Tgis(TgisClient::faux());
+        let mock_generation_client = GenerationClient::tgis(TgisClient::faux());
         let mut mock_detector_client = DetectorClient::faux();
 
         let detector_id = "mocked_hap_detector";
