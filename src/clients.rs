@@ -576,30 +576,32 @@ mod tests {
     use errors::grpc_to_http_code;
     use http_body_util::BodyExt;
     use hyper::{http, StatusCode};
+    use tower_http::trace::ResponseBody;
 
     use super::*;
     use crate::{
-        clients::http::Response,
+        clients::http::TracedResponse,
         health::{HealthCheckResult, HealthStatus},
         pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
     };
 
-    async fn mock_http_response(status: StatusCode, body: &str) -> Result<Response, Error> {
-        Ok(Response(
-            http::Response::builder()
-                .status(status)
-                .body(
-                    body.to_string()
-                        .map_err(|e| {
-                            panic!(
-                                "infallible error parsing string body in test response: {}",
-                                e
-                            )
-                        })
-                        .boxed(),
-                )
-                .unwrap(),
-        ))
+    async fn mock_http_response(status: StatusCode, body: &str) -> Result<TracedResponse, Error> {
+        let response = http::Response::builder()
+            .status(status)
+            .body(
+                body.to_string()
+                    .map_err(|e| {
+                        panic!(
+                            "infallible error parsing string body in test response: {}",
+                            e
+                        )
+                    })
+                    .boxed(),
+            )
+            .unwrap();
+
+        // Incorrect types here!
+        Ok(response)
     }
 
     async fn mock_grpc_response(
