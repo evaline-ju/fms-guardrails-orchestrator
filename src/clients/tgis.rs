@@ -16,25 +16,24 @@
 */
 
 use async_trait::async_trait;
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use futures::{StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
-use tonic::Code;
-use tracing::{debug, instrument, Span};
+use tracing::instrument;
 
 use super::{
-    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error, GrpcClient,
+    create_grpc_client, grpc::GrpcClient, grpc_request_with_headers, BoxStream, Client, Error,
 };
 use crate::{
     config::ServiceConfig,
+    grpc_call, grpc_stream_call,
     health::{HealthCheckResult, HealthStatus},
     pb::fmaas::{
-        generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
-        BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
-        GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
+        generation_service_client::GenerationServiceClient, generation_service_server,
+        BatchedGenerationRequest, BatchedGenerationResponse, BatchedTokenizeRequest,
+        BatchedTokenizeResponse, GenerationResponse, ModelInfoRequest, ModelInfoResponse,
+        SingleGenerationRequest,
     },
-    utils::trace::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8033;
@@ -48,7 +47,14 @@ pub struct TgisClient {
 #[cfg_attr(test, faux::methods)]
 impl TgisClient {
     pub async fn new(config: &ServiceConfig) -> Self {
-        let client = create_grpc_client(DEFAULT_PORT, config, GenerationServiceClient::new).await;
+        let client = create_grpc_client(
+            generation_service_server::SERVICE_NAME,
+            DEFAULT_PORT,
+            config,
+            GenerationServiceClient::new,
+            true,
+        )
+        .await;
         Self { client }
     }
 
@@ -59,12 +65,7 @@ impl TgisClient {
         headers: HeaderMap,
     ) -> Result<BatchedGenerationResponse, Error> {
         let request = grpc_request_with_headers(request, headers);
-        debug!(?request, "sending request to TGIS gRPC service");
-        let mut client = self.client.clone();
-        let response = client.generate(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
-        Ok(response.into_inner())
+        grpc_call!(self.client, request, GenerationServiceClient::generate)
     }
 
     #[instrument(skip_all, fields(model_id = request.model_id))]
@@ -74,12 +75,11 @@ impl TgisClient {
         headers: HeaderMap,
     ) -> Result<BoxStream<Result<GenerationResponse, Error>>, Error> {
         let request = grpc_request_with_headers(request, headers);
-        debug!(?request, "sending request to TGIS gRPC service");
-        let mut client = self.client.clone();
-        let response = client.generate_stream(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
-        Ok(response.into_inner().map_err(Into::into).boxed())
+        grpc_stream_call!(
+            self.client,
+            request,
+            GenerationServiceClient::generate_stream
+        )
     }
 
     #[instrument(skip_all, fields(model_id = request.model_id))]
@@ -88,23 +88,13 @@ impl TgisClient {
         request: BatchedTokenizeRequest,
         headers: HeaderMap,
     ) -> Result<BatchedTokenizeResponse, Error> {
-        let mut client = self.client.clone();
         let request = grpc_request_with_headers(request, headers);
-        debug!(?request, "sending request to TGIS gRPC service");
-        let response = client.tokenize(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
-        Ok(response.into_inner())
+        grpc_call!(self.client, request, GenerationServiceClient::tokenize)
     }
 
     pub async fn model_info(&self, request: ModelInfoRequest) -> Result<ModelInfoResponse, Error> {
-        debug!(?request, "sending request to TGIS gRPC service");
         let request = grpc_request_with_headers(request, HeaderMap::new());
-        let mut client = self.client.clone();
-        let response = client.model_info(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
-        Ok(response.into_inner())
+        grpc_call!(self.client, request, GenerationServiceClient::model_info)
     }
 }
 
@@ -115,30 +105,36 @@ impl Client for TgisClient {
         "tgis"
     }
 
-    async fn health(&self) -> HealthCheckResult {
-        let mut client = self.client.clone();
-        let response = client
-            .model_info(ModelInfoRequest {
+    async fn health(&self) -> Result<HealthCheckResult, Error> {
+        let request = grpc_request_with_headers(
+            ModelInfoRequest {
                 model_id: "".into(),
-            })
-            .await;
+            },
+            HeaderMap::new(),
+        );
+        let response =
+            async { grpc_call!(self.client, request, GenerationServiceClient::model_info) }.await;
         let code = match response {
-            Ok(_) => Code::Ok,
-            Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
-                Code::Ok
-            }
-            Err(status) => status.code(),
+            Ok(_) => StatusCode::OK,
+            Err(error) => match error {
+                Error::Grpc {
+                    code: StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND,
+                    ..
+                } => StatusCode::OK,
+                Error::Grpc { code, .. } => code,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
         };
-        let status = if matches!(code, Code::Ok) {
+        let status = if matches!(code, StatusCode::OK) {
             HealthStatus::Healthy
         } else {
             HealthStatus::Unhealthy
         };
-        HealthCheckResult {
+        Ok(HealthCheckResult {
             status,
-            code: grpc_to_http_code(code),
+            code,
             reason: None,
-        }
+        })
     }
 }
 

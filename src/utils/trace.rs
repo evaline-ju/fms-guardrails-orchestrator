@@ -381,6 +381,19 @@ pub fn trace_context_from_grpc_response<T>(span: &Span, response: &tonic::Respon
     }
 }
 
+/// Extracts the `traceparent` header from the header map and sets the current tracing span context.
+/// Uses current span context if no `traceparent` is found.
+pub fn trace_context(span: &Span, headers: &HeaderMap) {
+    let curr_trace = span.context().span().span_context().trace_id();
+    let ctx = global::get_text_map_propagator(|propagator| {
+        // Returns the current context if no `traceparent` is found
+        propagator.extract(&HeaderExtractor(headers))
+    });
+    if ctx.span().span_context().trace_id() == curr_trace {
+        span.set_parent(ctx);
+    }
+}
+
 /// Returns the `trace_id` of the current span according to the global tracing subscriber.
 pub fn current_trace_id() -> TraceId {
     Span::current().context().span().span_context().trace_id()

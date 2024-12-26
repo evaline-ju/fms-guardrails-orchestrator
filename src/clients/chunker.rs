@@ -15,31 +15,30 @@
 
 */
 
-use std::pin::Pin;
-
 use async_trait::async_trait;
 use axum::http::HeaderMap;
-use futures::{Future, Stream, StreamExt, TryStreamExt};
+use futures::{Stream, StreamExt, TryStreamExt};
 use ginepro::LoadBalancedChannel;
-use tonic::{Code, Request, Response, Status, Streaming};
-use tracing::{debug, info, instrument, Span};
+use hyper::StatusCode;
+use tonic::{Request, Response, Status, Streaming};
+use tracing::instrument;
 
 use super::{
-    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers, BoxStream, Client,
-    Error, GrpcClient,
+    create_grpc_client, grpc::GrpcClient, grpc_request_with_headers, BoxStream, Client, Error,
 };
+use crate::pb::grpc::health::v1::HealthCheckResponse;
 use crate::{
     config::ServiceConfig,
+    grpc_call, grpc_stream_call,
     health::{HealthCheckResult, HealthStatus},
     pb::{
         caikit::runtime::chunkers::{
-            chunkers_service_client::ChunkersServiceClient,
+            chunkers_service_client::ChunkersServiceClient, chunkers_service_server,
             BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
         },
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, Token, TokenizationResults},
-        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
+        grpc::health::v1::{health_client::HealthClient, health_server, HealthCheckRequest},
     },
-    utils::trace::trace_context_from_grpc_response,
 };
 
 const DEFAULT_PORT: u16 = 8085;
@@ -60,8 +59,22 @@ pub struct ChunkerClient {
 #[cfg_attr(test, faux::methods)]
 impl ChunkerClient {
     pub async fn new(config: &ServiceConfig) -> Self {
-        let client = create_grpc_client(DEFAULT_PORT, config, ChunkersServiceClient::new).await;
-        let health_client = create_grpc_client(DEFAULT_PORT, config, HealthClient::new).await;
+        let client = create_grpc_client(
+            chunkers_service_server::SERVICE_NAME,
+            DEFAULT_PORT,
+            config,
+            ChunkersServiceClient::new,
+            true,
+        )
+        .await;
+        let health_client = create_grpc_client(
+            health_server::SERVICE_NAME,
+            DEFAULT_PORT,
+            config,
+            HealthClient::new,
+            false,
+        )
+        .await;
         Self {
             client,
             health_client,
@@ -74,13 +87,12 @@ impl ChunkerClient {
         model_id: &str,
         request: ChunkerTokenizationTaskRequest,
     ) -> Result<TokenizationResults, Error> {
-        let mut client = self.client.clone();
         let request = request_with_headers(request, model_id);
-        debug!(?request, "sending client request");
-        let response = client.chunker_tokenization_task_predict(request).await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response);
-        Ok(response.into_inner())
+        grpc_call!(
+            self.client,
+            request,
+            ChunkersServiceClient::chunker_tokenization_task_predict
+        )
     }
 
     #[instrument(skip_all, fields(model_id))]
@@ -89,17 +101,20 @@ impl ChunkerClient {
         model_id: &str,
         request_stream: BoxStream<BidiStreamingChunkerTokenizationTaskRequest>,
     ) -> Result<BoxStream<Result<ChunkerTokenizationStreamResult, Error>>, Error> {
-        info!("sending client stream request");
-        let mut client = self.client.clone();
         let request = request_with_headers(request_stream, model_id);
-        // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
-        // https://github.com/rust-lang/rust/issues/110338
-        let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
-            Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
-        let response_stream = response_stream_fut.await?;
-        let span = Span::current();
-        trace_context_from_grpc_response(&span, &response_stream);
-        Ok(response_stream.into_inner().map_err(Into::into).boxed())
+        // let mut client = self.client.inner.clone();
+        // // NOTE: this is an ugly workaround to avoid bogus higher-ranked lifetime errors.
+        // // https://github.com/rust-lang/rust/issues/110338
+        // let response_stream_fut: Pin<Box<dyn Future<Output = StreamingTokenizationResult> + Send>> =
+        //     Box::pin(client.bidi_streaming_chunker_tokenization_task_predict(request));
+        // let response_stream = response_stream_fut.await?;
+        // trace_context_from_grpc_response(&response_stream);
+        // Ok(response_stream.into_inner().map_err(Into::into).boxed())
+        grpc_stream_call!(
+            self.client,
+            request,
+            ChunkersServiceClient::bidi_streaming_chunker_tokenization_task_predict
+        )
     }
 }
 
@@ -110,28 +125,32 @@ impl Client for ChunkerClient {
         "chunker"
     }
 
-    async fn health(&self) -> HealthCheckResult {
-        let mut client = self.health_client.clone();
-        let response = client
-            .check(HealthCheckRequest { service: "".into() })
-            .await;
+    async fn health(&self) -> Result<HealthCheckResult, Error> {
+        let request =
+            grpc_request_with_headers(HealthCheckRequest { service: "".into() }, HeaderMap::new());
+        let response: Result<HealthCheckResponse, Error> =
+            async { grpc_call!(self.health_client, request, HealthClient::check) }.await;
         let code = match response {
-            Ok(_) => Code::Ok,
-            Err(status) if matches!(status.code(), Code::InvalidArgument | Code::NotFound) => {
-                Code::Ok
-            }
-            Err(status) => status.code(),
+            Ok(_) => StatusCode::OK,
+            Err(error) => match error {
+                Error::Grpc {
+                    code: StatusCode::BAD_REQUEST | StatusCode::NOT_FOUND,
+                    ..
+                } => StatusCode::OK,
+                Error::Grpc { code, .. } => code,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            },
         };
-        let status = if matches!(code, Code::Ok) {
+        let status = if matches!(code, StatusCode::OK) {
             HealthStatus::Healthy
         } else {
             HealthStatus::Unhealthy
         };
-        HealthCheckResult {
+        Ok(HealthCheckResult {
             status,
-            code: grpc_to_http_code(code),
+            code,
             reason: None,
-        }
+        })
     }
 }
 

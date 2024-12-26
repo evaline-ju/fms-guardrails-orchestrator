@@ -19,8 +19,6 @@
 use std::{
     any::TypeId,
     collections::{hash_map, HashMap},
-    fmt::Debug,
-    ops::{Deref, DerefMut},
     pin::Pin,
     time::Duration,
 };
@@ -40,10 +38,10 @@ use tonic::{metadata::MetadataMap, Request};
 use tower::timeout::TimeoutLayer;
 use tower::ServiceBuilder;
 use tower_http::{
-    classify::{GrpcErrorsAsFailures, GrpcFailureClass, SharedClassifier},
+    classify::GrpcFailureClass,
     trace::{
         DefaultOnBodyChunk, GrpcMakeClassifier, MakeSpan, OnEos, OnFailure, OnRequest, OnResponse,
-        Trace, TraceLayer,
+        TraceLayer,
     },
 };
 use tracing::{debug, error, info, info_span, instrument, Span};
@@ -66,6 +64,9 @@ pub mod chunker;
 
 pub mod detector;
 pub use detector::TextContentsDetectorClient;
+
+pub mod grpc;
+pub use grpc::GrpcClient;
 
 pub mod tgis;
 pub use tgis::TgisClient;
@@ -98,7 +99,7 @@ pub trait Client: Send + Sync + 'static {
     }
 
     /// Performs a client health check.
-    async fn health(&self) -> HealthCheckResult;
+    async fn health(&self) -> Result<HealthCheckResult, Error>;
 }
 
 impl dyn Client {
@@ -268,10 +269,12 @@ pub async fn create_http_client(
 }
 
 #[instrument(skip_all, fields(hostname = service_config.hostname))]
-pub async fn create_grpc_client<C: Debug + Clone>(
+pub async fn create_grpc_client<C: Clone>(
+    service_name: &str,
     default_port: u16,
     service_config: &ServiceConfig,
     new: fn(LoadBalancedChannel) -> C,
+    enable_tracing: bool,
 ) -> GrpcClient<C> {
     let port = service_config.port.unwrap_or(default_port);
     let protocol = match service_config.tls {
@@ -326,13 +329,7 @@ pub async fn create_grpc_client<C: Debug + Clone>(
         .channel()
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
-
-    let client = new(channel);
-    // Adds tower::Service wrapper to allow for enable middleware layers to be added
-    let channel = ServiceBuilder::new()
-        .layer(grpc_trace_layer())
-        .service(client);
-    GrpcClient(channel)
+    GrpcClient::new(service_name.to_string(), new(channel), enable_tracing)
 }
 
 /// Returns `true` if hostname is valid according to [IETF RFC 1123](https://tools.ietf.org/html/rfc1123).
@@ -370,35 +367,35 @@ fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
     Request::from_parts(metadata, Extensions::new(), request)
 }
 
-pub type GrpcServiceRequest = hyper::Request<tonic::body::BoxBody>;
+// pub type GrpcServiceRequest = hyper::Request<tonic::body::BoxBody>;
 
-#[derive(Debug, Clone)]
-pub struct GrpcClient<C: Debug + Clone>(
-    Trace<
-        C,
-        SharedClassifier<GrpcErrorsAsFailures>,
-        ClientMakeSpan,
-        ClientOnRequest,
-        ClientOnResponse,
-        DefaultOnBodyChunk,
-        ClientOnEos,
-        ClientOnFailure,
-    >,
-);
+// #[derive(Debug, Clone)]
+// pub struct GrpcClient<C: Debug + Clone>(
+//     Trace<
+//         C,
+//         SharedClassifier<GrpcErrorsAsFailures>,
+//         ClientMakeSpan,
+//         ClientOnRequest,
+//         ClientOnResponse,
+//         DefaultOnBodyChunk,
+//         ClientOnEos,
+//         ClientOnFailure,
+//     >,
+// );
 
-impl<C: Debug + Clone> Deref for GrpcClient<C> {
-    type Target = C;
+// impl<C: Debug + Clone> Deref for GrpcClient<C> {
+//     type Target = C;
 
-    fn deref(&self) -> &Self::Target {
-        self.0.get_ref()
-    }
-}
+//     fn deref(&self) -> &Self::Target {
+//         self.0.get_ref()
+//     }
+// }
 
-impl<C: Debug + Clone> DerefMut for GrpcClient<C> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.get_mut()
-    }
-}
+// impl<C: Debug + Clone> DerefMut for GrpcClient<C> {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         self.0.get_mut()
+//     }
+// }
 
 pub type GrpcClientTraceLayer = TraceLayer<
     GrpcMakeClassifier,
