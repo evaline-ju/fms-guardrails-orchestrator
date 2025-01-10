@@ -11,9 +11,9 @@ ARG PROTOC_VERSION
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
 # Install protoc, no longer included in prost crate
-RUN cd /tmp && \
-    curl -L -O https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip && \
-    unzip protoc-*.zip -d /usr/local && rm protoc-*.zip
+# RUN cd /tmp && \
+#     curl -L -O https://github.com/protocolbuffers/protobuf/releases/download/v${PROTOC_VERSION}/protoc-${PROTOC_VERSION}-linux-x86_64.zip && \
+#     unzip protoc-*.zip -d /usr/local && rm protoc-*.zip
 
 WORKDIR /app
 

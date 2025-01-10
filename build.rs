@@ -1,7 +1,9 @@
-use std::fs;
+use std::{env, fs};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir("src/pb").unwrap_or(());
+    // Use vendored protoc crate, since protoc is no longer included in prost crate
+    env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path().unwrap());
     tonic_build::configure()
         .build_client(true)
         .build_server(true)
