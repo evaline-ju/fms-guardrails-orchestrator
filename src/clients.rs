@@ -28,6 +28,7 @@ use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
 use ginepro::LoadBalancedChannel;
+use hyper::http::header::CONTENT_TYPE;
 use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
 use tonic::{metadata::MetadataMap, Request};
@@ -313,7 +314,7 @@ pub async fn create_grpc_client<C: Debug + Clone>(
     if let Some(client_tls_config) = client_tls_config {
         builder = builder.with_tls(client_tls_config);
     }
-    let channel = builder
+    let channel: LoadBalancedChannel = builder
         .channel()
         .await
         .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
@@ -353,7 +354,8 @@ pub fn is_valid_hostname(hostname: &str) -> bool {
 /// Will also inject the current `traceparent` header into the request based on the current span.
 fn grpc_request_with_headers<T>(request: T, headers: HeaderMap) -> Request<T> {
     let ctx = Span::current().context();
-    let headers = with_traceparent_header(&ctx, headers);
+    let mut headers = with_traceparent_header(&ctx, headers);
+    headers.append(CONTENT_TYPE, "application/grpc".parse().unwrap());
     let metadata = MetadataMap::from_headers(headers);
     Request::from_parts(metadata, Extensions::new(), request)
 }
