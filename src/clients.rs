@@ -27,9 +27,10 @@ use std::{
 use async_trait::async_trait;
 use axum::http::{Extensions, HeaderMap};
 use futures::Stream;
-use ginepro::LoadBalancedChannel;
+use hyper::client;
 use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
+use tonic::transport::Channel;
 use tonic::{metadata::MetadataMap, Request};
 use tower::{timeout::TimeoutLayer, ServiceBuilder};
 use tracing::{debug, instrument, Span};
@@ -282,10 +283,11 @@ pub async fn create_grpc_client<C: Debug + Clone>(
             .grpc_dns_probe_interval
             .unwrap_or(DEFAULT_GRPC_PROBE_INTERVAL_SEC),
     );
-    let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
-        .dns_probe_interval(grpc_dns_probe_interval)
-        .connect_timeout(connect_timeout)
-        .timeout(request_timeout);
+
+    // let mut builder = LoadBalancedChannel::builder((service_config.hostname.clone(), port))
+    //     .dns_probe_interval(grpc_dns_probe_interval)
+    //     .connect_timeout(connect_timeout)
+    //     .timeout(request_timeout);
 
     let client_tls_config = if let Some(Tls::Config(tls_config)) = &service_config.tls {
         let cert_path = tls_config.cert_path.as_ref().unwrap().as_path();
@@ -315,14 +317,21 @@ pub async fn create_grpc_client<C: Debug + Clone>(
     } else {
         None
     };
+    let hostname = service_config.hostname.clone();
+    let endpoint_str = format!("{hostname}:{port}");
+    let mut endpoint = Channel::from_static(&endpoint_str)
+        .connect_timeout(connect_timeout)
+        .timeout(request_timeout);
     if let Some(client_tls_config) = client_tls_config {
-        builder = builder.with_tls(client_tls_config);
+        if let Ok(endpoint_with_tls) = Channel::from_static(&endpoint_str)
+            .connect_timeout(connect_timeout)
+            .timeout(request_timeout)
+            .tls_config(client_tls_config)
+        {
+            endpoint = endpoint_with_tls
+        }
     }
-    let channel = builder
-        .channel()
-        .await
-        .unwrap_or_else(|error| panic!("error creating grpc client: {error}"));
-
+    let channel = Channel::balance_list(endpoint);
     // Adds tower::Service wrapper to allow for enable middleware layers to be added
     let channel = ServiceBuilder::new().layer(OtelGrpcLayer).service(channel);
     new(channel)
