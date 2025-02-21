@@ -876,8 +876,7 @@ checksum = "32085ea23f3234fc7846555e85283ba4de91e21016dc0455a16286d87a292d64"
 [[package]]
 name = "ginepro"
 version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a71e958d6edde3a87f7341c81c978fccc013950257d49a8e2da2a2361946924"
+source = "git+https://github.com/evaline-ju/ginepro.git?branch=log-ip#a8e419f741f4c6656e52b905eb4a0127cc2cb348"
 dependencies = [
  "anyhow",
  "async-trait",
