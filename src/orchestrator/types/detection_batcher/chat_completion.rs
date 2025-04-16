@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use std::collections::{btree_map, BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, btree_map};
 
 use tracing::{debug, warn};
 
@@ -22,6 +22,14 @@ use super::{Chunk, DetectionBatcher, Detections, DetectorId, InputId};
 use crate::config::ChunkerType;
 
 /// A batcher for chat completions.
+///
+/// This batcher will leverage the concept of chunker hierarchy - the smallest
+/// chunk overall among all detectors will be the type displayed, with larger chunk
+/// information displayed after the last respective chunk (e.g. if all detectors use both
+/// sentence and all/whole stream chunking, the chunks displayed will be sentences with
+/// associated detectors, with any detections on the all/whole stream as a last separate chunk
+/// without content in this batcher context, since all content was streamed back prior. The process
+/// could be leveraged for more than two chunker types as needed.
 pub struct ChatCompletionBatcher {
     detectors: Vec<DetectorId>,
     chunker_types: HashMap<DetectorId, ChunkerType>,
@@ -31,14 +39,14 @@ pub struct ChatCompletionBatcher {
 
 impl ChatCompletionBatcher {
     pub fn new(detectors: Vec<DetectorId>, chunker_types: HashMap<String, ChunkerType>) -> Self {
-        let chunk_detector_count: HashMap<ChunkerType, usize> = chunker_types.iter().fold(
-            HashMap::new(),
-            |mut counts, (key, value)| {
-                counts.entry(value.clone()).or_insert(0);
-                *counts.entry(value.clone()).or_insert(0) += 1;
-                counts
-            },
-        );
+        let chunk_detector_count: HashMap<ChunkerType, usize> =
+            chunker_types
+                .iter()
+                .fold(HashMap::new(), |mut counts, (key, value)| {
+                    counts.entry(value.clone()).or_insert(0);
+                    *counts.entry(value.clone()).or_insert(0) += 1;
+                    counts
+                });
 
         println!("chunk detector count: {:?}", chunk_detector_count);
 
@@ -63,7 +71,9 @@ impl DetectionBatcher for ChatCompletionBatcher {
         chunk: Chunk,
         detections: Detections,
     ) {
-
+        // This will basically be kept the same as the max_processed_index batcher
+        // since at this point, each chunk should already be separated by choice?
+        // May need to revisit
         if let Some(chunk_type) = self.chunker_types.get(&detector_id) {
             match self.state.entry(chunk) {
                 btree_map::Entry::Vacant(entry) => {
@@ -79,7 +89,6 @@ impl DetectionBatcher for ChatCompletionBatcher {
             // This should only happen if there is a bug when initializing this batcher
             warn!("Chunker type for {:?} not found", detector_id);
         }
-
     }
 
     fn pop_batch(&mut self) -> Option<Self::Batch> {
@@ -90,32 +99,35 @@ impl DetectionBatcher for ChatCompletionBatcher {
         if self
             .state
             .first_key_value()
-            .is_some_and(|(_, (chunk_type, detections))| *chunk_type == ChunkerType::All && detections.len() == *self.chunk_detector_count.get(chunk_type).unwrap()) {
-
-                debug!("processing All chunker type detectors");
-                println!("reached in pop for All chunker");
-                if self.state.len() == 1 {
-                    println!("for All chunker met with condition state.len == 1");
-                    // Only return detections from All type chunker, if all other types have been already sent out or don't exist
-                    if let Some((chunk, (_, detections))) = self.state.pop_first() {
-                        let mut detections: Detections = detections.into_iter().flatten().collect();
-                        // Provide sorted detections within each chunk
-                        detections.sort_by_key(|r| r.start);
-                        return Some((chunk, detections));
-                    }
+            .is_some_and(|(_, (chunk_type, detections))| {
+                *chunk_type == ChunkerType::All
+                    && detections.len() == *self.chunk_detector_count.get(chunk_type).unwrap()
+            })
+        {
+            debug!("processing All chunker type detectors");
+            println!("reached in pop for All chunker");
+            if self.state.len() == 1 {
+                println!("for All chunker met with condition state.len == 1");
+                // Only return detections from All type chunker, if all other types have been already sent out or don't exist
+                if let Some((chunk, (_, detections))) = self.state.pop_first() {
+                    let mut detections: Detections = detections.into_iter().flatten().collect();
+                    // Provide sorted detections within each chunk
+                    detections.sort_by_key(|r| r.start);
+                    return Some((chunk, detections));
                 }
+            }
             // There are other elements, so do nothing
-        }
-        else if self
+        } else if self
             .state
             .first_key_value()
-            .is_some_and(|(_, (chunk_type, detections))| detections.len() == *self.chunk_detector_count.get(chunk_type).unwrap())
+            .is_some_and(|(_, (chunk_type, detections))| {
+                detections.len() == *self.chunk_detector_count.get(chunk_type).unwrap()
+            })
         {
             debug!("processing sentence chunker type detectors");
             println!("reached in pop for sentence chunker");
             // We have all detections for the chunk, remove and return it.
             if let Some((chunk, (_, detections))) = self.state.pop_first() {
-
                 println!("reached in pop for sentence chunker internal condition");
                 let mut detections: Detections = detections.into_iter().flatten().collect();
                 // Provide sorted detections within each chunk
@@ -126,7 +138,6 @@ impl DetectionBatcher for ChatCompletionBatcher {
         None
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -139,12 +150,12 @@ mod test {
 
     use super::*;
     use crate::orchestrator::{
-        types::{Detection, DetectionBatchStream},
         Error,
+        types::{Detection, DetectionBatchStream},
     };
 
     #[test]
-    fn test_batcher_with_single_chunk_no_all_type() {
+    fn test_batcher_with_single_chunk_sentence_type() {
         let input_id = 0;
         let chunk = Chunk {
             input_start_index: 0,
@@ -214,7 +225,6 @@ mod test {
             batch.is_some_and(|(chunk, detections)| { chunk == chunk && detections.len() == 3 })
         );
     }
-
 
     #[test]
     fn test_batcher_with_single_chunk_all_type() {
@@ -376,32 +386,38 @@ mod test {
             .into(),
         );
 
-
         // We have all detections for chunk-1 and chunk-2
         // pop_batch() should return chunk-1 with 1 pii detection
         let batch = batcher.pop_batch();
         println!("batch 1: {:?}", batch);
 
-        assert!(batch
-            .is_some_and(|(chunk, detections)| { chunk == chunks[0] && detections.len() == 1 }));
+        assert!(
+            batch
+                .is_some_and(|(chunk, detections)| { chunk == chunks[0] && detections.len() == 1 })
+        );
 
         // pop_batch() should return chunk-2
         let batch = batcher.pop_batch();
         println!("batch 2: {:?}", batch);
         println!("batcher state: {:?}", batcher.state);
-        assert!(batch
-            .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.len() == 1 }));
+        assert!(
+            batch
+                .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.len() == 1 })
+        );
 
         // pop_batch() should return detection for All type chunk
         let batch = batcher.pop_batch();
         println!("batch 3: {:?}", batch);
-        assert!(batch
-            .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.len() == 1 }));
+        assert!(
+            batch
+                .is_some_and(|(chunk, detections)| { chunk == chunks[1] && detections.len() == 1 })
+        );
 
         // batcher state should be empty as all batches have been returned
         assert!(batcher.state.is_empty());
     }
 
+    // From max_processed_index batcher
     // #[tokio::test]
     // async fn test_detection_batch_stream() -> Result<(), Error> {
     //     let input_id = 0;

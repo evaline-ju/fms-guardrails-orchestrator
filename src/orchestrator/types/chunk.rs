@@ -68,7 +68,7 @@ impl PartialEq for Chunk {
             other.end,
         )
     }
-}
+} // TODO: extend to compare types
 
 impl Eq for Chunk {}
 
