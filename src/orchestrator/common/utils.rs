@@ -17,6 +17,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use crate::{
+    config::ChunkerType,
     models::DetectorParams,
     orchestrator::{Context, Error},
 };
@@ -41,11 +42,11 @@ pub fn apply_masks(text: String, masks: Option<&[(usize, usize)]>) -> Vec<(usize
     }
 }
 
-/// Looks up chunker ids for detectors.
-pub fn get_chunker_ids(
+/// Looks up chunker ids and chunker types for detectors.
+pub fn get_chunker_ids_and_types(
     ctx: &Arc<Context>,
     detectors: &HashMap<String, DetectorParams>,
-) -> Result<Vec<String>, Error> {
+) -> Result<Vec<(String, ChunkerType)>, Error> {
     detectors
         .keys()
         .map(|detector_id| {
@@ -53,7 +54,12 @@ pub fn get_chunker_ids(
                 .config
                 .get_chunker_id(detector_id)
                 .ok_or_else(|| Error::DetectorNotFound(detector_id.clone()))?;
-            Ok::<String, Error>(chunker_id)
+            let chunker_type = ctx
+                .config
+                .chunker(&chunker_id)
+                .ok_or_else(|| Error::Validation("No chunker type provided".to_owned()))?
+                .r#type;
+            Ok::<(String, ChunkerType), Error>((chunker_id, chunker_type))
         })
         .collect::<Result<Vec<_>, Error>>()
 }

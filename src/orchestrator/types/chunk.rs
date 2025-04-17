@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use crate::pb::caikit_data_model::nlp as pb;
+use crate::{config::ChunkerType, pb::caikit_data_model::nlp as pb};
 
 /// A chunk.
 #[derive(Default, Debug, Clone)]
@@ -29,6 +29,8 @@ pub struct Chunk {
     pub end: usize,
     /// Text
     pub text: String,
+    /// Chunk type, optional? TBD [mostly needed for streamed chunks]
+    pub chunker_type: ChunkerType,
 }
 
 impl PartialOrd for Chunk {
@@ -61,11 +63,13 @@ impl PartialEq for Chunk {
             self.input_end_index,
             self.start,
             self.end,
+            self.chunker_type,
         ) == (
             other.input_start_index,
             other.input_end_index,
             other.start,
             other.end,
+            other.chunker_type,
         )
     }
 } // TODO: extend to compare types
@@ -78,6 +82,7 @@ impl std::hash::Hash for Chunk {
         self.input_end_index.hash(state);
         self.start.hash(state);
         self.end.hash(state);
+        self.chunker_type.hash(state);
     }
 }
 
@@ -132,32 +137,37 @@ impl From<Vec<Chunk>> for Chunks {
 
 // Conversions
 
-impl From<pb::ChunkerTokenizationStreamResult> for Chunk {
-    fn from(value: pb::ChunkerTokenizationStreamResult) -> Self {
-        let text = value
+impl From<(ChunkerType, pb::ChunkerTokenizationStreamResult)> for Chunk {
+    fn from(value: (ChunkerType, pb::ChunkerTokenizationStreamResult)) -> Self {
+        let chunker_type = value.0;
+        let stream_result = value.1;
+        let text = stream_result
             .results
             .into_iter()
             .map(|token| token.text)
             .collect::<String>();
         Chunk {
-            input_start_index: value.input_start_index as usize,
-            input_end_index: value.input_end_index as usize,
-            start: value.start_index as usize,
-            end: value.processed_index as usize,
+            input_start_index: stream_result.input_start_index as usize,
+            input_end_index: stream_result.input_end_index as usize,
+            start: stream_result.start_index as usize,
+            end: stream_result.processed_index as usize,
             text,
+            chunker_type,
         }
     }
 }
 
-impl From<pb::TokenizationResults> for Chunks {
-    fn from(value: pb::TokenizationResults) -> Self {
-        value
+impl From<(ChunkerType, pb::TokenizationResults)> for Chunks {
+    fn from(value: (ChunkerType, pb::TokenizationResults)) -> Self {
+        let chunker_type = value.0;
+        value.1
             .results
             .into_iter()
             .map(|token| Chunk {
                 start: token.start as usize,
                 end: token.end as usize,
                 text: token.text,
+                chunker_type,
                 ..Default::default()
             })
             .collect()

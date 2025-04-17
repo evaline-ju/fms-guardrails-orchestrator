@@ -23,23 +23,17 @@ use tracing::{debug, instrument};
 
 use crate::{
     clients::{
-        GenerationClient, TextContentsDetectorClient,
-        chunker::ChunkerClient,
-        detector::{
+        chunker::ChunkerClient, detector::{
             ChatDetectionRequest, ContentAnalysisRequest, ContextDocsDetectionRequest, ContextType,
             GenerationDetectionRequest, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
-        },
-        openai::{self, ChatCompletionsResponse, OpenAiClient},
-    },
-    models::{
+        }, openai::{self, ChatCompletionsResponse, OpenAiClient}, GenerationClient, TextContentsDetectorClient
+    }, config::ChunkerType, models::{
         ClassifiedGeneratedTextResult as GenerateResponse, DetectorParams,
         GuardrailsTextGenerationParameters as GenerateParams,
-    },
-    orchestrator::{Error, types::*},
-    pb::caikit::runtime::chunkers::{
+    }, orchestrator::{types::*, Error}, pb::caikit::runtime::chunkers::{
         BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
-    },
+    }
 };
 
 /// Sends request to chunker client.
@@ -47,6 +41,7 @@ use crate::{
 pub async fn chunk(
     client: &ChunkerClient,
     chunker_id: ChunkerId,
+    chunker_type: ChunkerType,
     text: String,
 ) -> Result<Chunks, Error> {
     let request = ChunkerTokenizationTaskRequest { text };
@@ -59,7 +54,7 @@ pub async fn chunk(
             error,
         })?;
     debug!(%chunker_id, ?response, "received chunker response");
-    Ok(response.into())
+    Ok((chunker_type, response).into())
 }
 
 /// Sends chunk stream request to chunker client.
@@ -67,6 +62,7 @@ pub async fn chunk(
 pub async fn chunk_stream(
     client: &ChunkerClient,
     chunker_id: ChunkerId,
+    chunker_type: ChunkerType,
     input_rx: broadcast::Receiver<Result<(usize, String), Error>>, // (message_index, text)
 ) -> Result<ChunkStream, Error> {
     let input_stream = BroadcastStream::new(input_rx)
@@ -86,7 +82,7 @@ pub async fn chunk_stream(
             id: chunker_id.clone(),
             error,
         })? // maps method call errors
-        .map_ok(Into::into)
+        .map_ok(move |stream_result| (chunker_type.clone(), stream_result).into())
         .map_err(move |error| Error::ChunkerRequestFailed {
             id: chunker_id.clone(),
             error,

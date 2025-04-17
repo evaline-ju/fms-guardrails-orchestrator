@@ -26,30 +26,25 @@ use tracing::{Instrument, debug, instrument};
 use super::{client::*, utils::*};
 use crate::{
     clients::{
-        TextContentsDetectorClient,
-        chunker::{ChunkerClient, DEFAULT_CHUNKER_ID},
-        detector::{
+        chunker::{ChunkerClient, DEFAULT_CHUNKER_ID}, detector::{
             ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
-        },
-        openai,
-    },
-    models::DetectorParams,
-    orchestrator::{Context, Error, types::*},
+        }, openai, TextContentsDetectorClient
+    }, config::ChunkerType, models::DetectorParams, orchestrator::{types::*, Context, Error}
 };
 
 /// Spawns chunk tasks. Returns a map of chunks.
 pub async fn chunks(
     ctx: Arc<Context>,
-    chunkers: Vec<ChunkerId>,
+    chunkers_ids_and_types: Vec<(ChunkerId, ChunkerType)>,
     inputs: Vec<(usize, String)>, // (offset, text)
 ) -> Result<HashMap<ChunkerId, Chunks>, Error> {
     if inputs.is_empty() {
         return Ok(HashMap::default());
     }
-    let tasks = chunkers
+    let tasks = chunkers_ids_and_types
         .into_iter()
-        .map(|chunker_id| {
+        .map(|(chunker_id, chunker_type)| {
             let ctx = ctx.clone();
             let inputs = inputs.clone();
             // Spawn task for chunker
@@ -65,13 +60,15 @@ pub async fn chunks(
                                 if chunker_id == DEFAULT_CHUNKER_ID {
                                     debug!("using whole doc chunker");
                                     // Return single chunk
+                                    // We could pass chunker_type here, but
+                                    // is expected to be 'All' anyway
                                     return Ok(whole_doc_chunk(offset, text));
                                 }
                                 let client = ctx
                                     .clients
                                     .get_as::<ChunkerClient>(&chunker_id)
                                     .ok_or_else(|| Error::ChunkerNotFound(chunker_id.clone()))?;
-                                let chunks = chunk(client, chunker_id.clone(), text)
+                                let chunks = chunk(client, chunker_id.clone(), chunker_type, text)
                                     .await?
                                     .into_iter()
                                     .map(|mut chunk| {
@@ -107,7 +104,7 @@ pub async fn chunks(
 /// Returns a map of chunk broadcast channels.
 pub async fn chunk_streams(
     ctx: Arc<Context>,
-    chunkers: Vec<ChunkerId>,
+    chunkers_ids_and_types: Vec<(ChunkerId, ChunkerType)>,
     input_rx: mpsc::Receiver<Result<(usize, String), Error>>, // (message_index, text)
 ) -> Result<HashMap<ChunkerId, broadcast::Sender<Result<Chunk, Error>>>, Error> {
     // Create input broadcast channel
@@ -115,8 +112,8 @@ pub async fn chunk_streams(
     let input_broadcast_tx = broadcast_stream(input_stream);
 
     // Create chunk broadcast channels for each chunker
-    let mut streams = Vec::with_capacity(chunkers.len());
-    for chunker_id in chunkers {
+    let mut streams = Vec::with_capacity(chunkers_ids_and_types.len());
+    for (chunker_id, chunker_type) in chunkers_ids_and_types {
         // Subscribe to input broadcast channel
         let input_broadcast_rx = input_broadcast_tx.subscribe();
         // Open chunk stream
@@ -129,7 +126,7 @@ pub async fn chunk_streams(
                 .clients
                 .get_as::<ChunkerClient>(&chunker_id)
                 .ok_or_else(|| Error::ChunkerNotFound(chunker_id.clone()))?;
-            chunk_stream(client, chunker_id.clone(), input_broadcast_rx).await
+            chunk_stream(client, chunker_id.clone(), chunker_type, input_broadcast_rx).await
         }?;
         // Create chunk broadcast channel
         let chunk_broadcast_tx = broadcast_stream(chunk_stream);
@@ -140,16 +137,19 @@ pub async fn chunk_streams(
     Ok(streams.into_iter().collect())
 }
 
+/// Return a chunk representing the entire doc
 fn whole_doc_chunk(offset: usize, text: String) -> Chunks {
     vec![Chunk {
         start: offset,
         end: text.chars().count() + offset,
         text,
+        chunker_type: ChunkerType::All,
         ..Default::default()
     }]
     .into()
 }
 
+/// Return a chunk representing the entire doc stream
 fn whole_doc_chunk_stream(
     mut input_broadcast_rx: broadcast::Receiver<Result<(usize, String), Error>>,
 ) -> Result<ChunkStream, Error> {
@@ -173,6 +173,7 @@ fn whole_doc_chunk_stream(
                 start: 0,
                 end: text.chars().count(),
                 text,
+                chunker_type: ChunkerType::All,
             };
             // Send chunk to output channel
             let _ = output_tx.send(Ok::<_, Error>(chunk)).await;
@@ -193,8 +194,8 @@ pub async fn text_contents_detections(
     input_id: InputId,
     inputs: Vec<(usize, String)>,
 ) -> Result<(InputId, Detections), Error> {
-    let chunkers = get_chunker_ids(&ctx, &detectors)?;
-    let chunk_map = chunks(ctx.clone(), chunkers, inputs).await?;
+    let chunkers_ids_and_types = get_chunker_ids_and_types(&ctx, &detectors)?;
+    let chunk_map = chunks(ctx.clone(), chunkers_ids_and_types, inputs).await?;
     let inputs = detectors
         .iter()
         .map(|(detector_id, params)| {
@@ -253,8 +254,8 @@ pub async fn text_contents_detection_streams(
     input_rx: mpsc::Receiver<Result<(usize, String), Error>>, // (message_index, text)
 ) -> Result<Vec<DetectionStream>, Error> {
     // Create chunk streams
-    let chunkers = get_chunker_ids(&ctx, &detectors)?;
-    let chunk_stream_map = chunk_streams(ctx.clone(), chunkers, input_rx).await?;
+    let chunkers_ids_and_types = get_chunker_ids_and_types(&ctx, &detectors)?;
+    let chunk_stream_map = chunk_streams(ctx.clone(), chunkers_ids_and_types, input_rx).await?;
     // Create detection streams
     let mut streams = Vec::with_capacity(detectors.len());
     for (detector_id, mut params) in detectors {
