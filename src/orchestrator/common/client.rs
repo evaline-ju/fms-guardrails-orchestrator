@@ -23,17 +23,24 @@ use tracing::{debug, instrument};
 
 use crate::{
     clients::{
-        chunker::ChunkerClient, detector::{
+        GenerationClient, TextContentsDetectorClient,
+        chunker::ChunkerClient,
+        detector::{
             ChatDetectionRequest, ContentAnalysisRequest, ContextDocsDetectionRequest, ContextType,
             GenerationDetectionRequest, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
-        }, openai::{self, ChatCompletionsResponse, OpenAiClient}, GenerationClient, TextContentsDetectorClient
-    }, config::ChunkerType, models::{
+        },
+        openai::{self, ChatCompletionsResponse, OpenAiClient},
+    },
+    config::ChunkerType,
+    models::{
         ClassifiedGeneratedTextResult as GenerateResponse, DetectorParams,
         GuardrailsTextGenerationParameters as GenerateParams,
-    }, orchestrator::{types::*, Error}, pb::caikit::runtime::chunkers::{
+    },
+    orchestrator::{Error, types::*},
+    pb::caikit::runtime::chunkers::{
         BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
-    }
+    },
 };
 
 /// Sends request to chunker client.

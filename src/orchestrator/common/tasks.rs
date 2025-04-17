@@ -26,11 +26,17 @@ use tracing::{Instrument, debug, instrument};
 use super::{client::*, utils::*};
 use crate::{
     clients::{
-        chunker::{ChunkerClient, DEFAULT_CHUNKER_ID}, detector::{
+        TextContentsDetectorClient,
+        chunker::{ChunkerClient, DEFAULT_CHUNKER_ID},
+        detector::{
             ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
-        }, openai, TextContentsDetectorClient
-    }, config::ChunkerType, models::DetectorParams, orchestrator::{types::*, Context, Error}
+        },
+        openai,
+    },
+    config::ChunkerType,
+    models::DetectorParams,
+    orchestrator::{Context, Error, types::*},
 };
 
 /// Spawns chunk tasks. Returns a map of chunks.

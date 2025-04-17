@@ -160,7 +160,8 @@ impl From<(ChunkerType, pb::ChunkerTokenizationStreamResult)> for Chunk {
 impl From<(ChunkerType, pb::TokenizationResults)> for Chunks {
     fn from(value: (ChunkerType, pb::TokenizationResults)) -> Self {
         let chunker_type = value.0;
-        value.1
+        value
+            .1
             .results
             .into_iter()
             .map(|token| Chunk {
