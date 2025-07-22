@@ -18,16 +18,16 @@
 use std::{fmt::Debug, ops::Deref, time::Duration};
 
 use http::header::HeaderValue;
-use http_body_util::{BodyExt, Full, combinators::BoxBody};
+use http_body_util::{combinators::BoxBody, BodyExt, Full};
 use hyper::{
-    HeaderMap, Method, Request, StatusCode,
     body::{Bytes, Incoming},
+    HeaderMap, Method, Request, StatusCode,
 };
 use hyper_rustls::HttpsConnector;
 use hyper_timeout::TimeoutConnector;
 use hyper_util::client::legacy::connect::HttpConnector;
-use serde::{Serialize, de::DeserializeOwned};
-use tower::{Service, timeout::Timeout};
+use serde::{de::DeserializeOwned, Serialize};
+use tower::{timeout::Timeout, Service};
 use tower_http::{
     classify::{
         NeverClassifyEos, ServerErrorsAsFailures, ServerErrorsFailureClass, SharedClassifier,
@@ -37,14 +37,14 @@ use tower_http::{
         Trace, TraceLayer,
     },
 };
-use tracing::{Span, error, info, info_span};
+use tracing::{error, info, info_span, Span};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
 
 use super::{Client, Error};
 use crate::{
     health::{HealthCheckResult, HealthStatus, OptionalHealthCheckResponseBody},
-    utils::{AsUriExt, trace},
+    utils::{trace, AsUriExt},
 };
 
 pub const JSON_CONTENT_TYPE: HeaderValue = HeaderValue::from_static("application/json");

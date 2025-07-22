@@ -18,7 +18,7 @@
 #![allow(dead_code)]
 use std::{
     any::TypeId,
-    collections::{HashMap, hash_map},
+    collections::{hash_map, HashMap},
     fmt::Debug,
     pin::Pin,
     time::Duration,
@@ -30,8 +30,8 @@ use futures::Stream;
 use ginepro::{LoadBalancedChannel, ResolutionStrategy};
 use hyper_timeout::TimeoutConnector;
 use hyper_util::rt::TokioExecutor;
-use tonic::{Request, metadata::MetadataMap};
-use tower::{ServiceBuilder, timeout::TimeoutLayer};
+use tonic::{metadata::MetadataMap, Request};
+use tower::{timeout::TimeoutLayer, ServiceBuilder};
 use tracing::Span;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use url::Url;
@@ -46,7 +46,7 @@ pub mod errors;
 pub use errors::Error;
 
 pub mod http;
-pub use http::{HttpClient, http_trace_layer};
+pub use http::{http_trace_layer, HttpClient};
 
 pub mod chunker;
 
@@ -383,7 +383,7 @@ mod tests {
     use super::*;
     use crate::{
         health::{HealthCheckResult, HealthStatus},
-        pb::grpc::health::v1::{HealthCheckResponse, health_check_response::ServingStatus},
+        pb::grpc::health::v1::{health_check_response::ServingStatus, HealthCheckResponse},
     };
 
     async fn mock_grpc_response(

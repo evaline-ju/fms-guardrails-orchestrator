@@ -31,8 +31,8 @@ use crate::{
         TextGenTokenClassificationResults,
     },
     orchestrator::{
-        Context, Error, Orchestrator,
         common::{self, validate_detectors},
+        Context, Error, Orchestrator,
     },
 };
 

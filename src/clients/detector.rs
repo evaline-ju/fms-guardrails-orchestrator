@@ -24,8 +24,8 @@ use serde::Deserialize;
 use url::Url;
 
 use super::{
+    http::{HttpClientExt, RequestBody, ResponseBody, JSON_CONTENT_TYPE},
     Error,
-    http::{HttpClientExt, JSON_CONTENT_TYPE, RequestBody, ResponseBody},
 };
 
 pub mod text_contents;

@@ -23,16 +23,16 @@ use tonic::Code;
 use tracing::Span;
 
 use super::{
-    BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
-    grpc_request_with_headers, otel_grpc::OtelGrpcService,
+    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers,
+    otel_grpc::OtelGrpcService, BoxStream, Client, Error,
 };
 use crate::{
     config::ServiceConfig,
     health::{HealthCheckResult, HealthStatus},
     pb::fmaas::{
-        BatchedGenerationRequest, BatchedGenerationResponse, BatchedTokenizeRequest,
-        BatchedTokenizeResponse, GenerationResponse, ModelInfoRequest, ModelInfoResponse,
-        SingleGenerationRequest, generation_service_client::GenerationServiceClient,
+        generation_service_client::GenerationServiceClient, BatchedGenerationRequest,
+        BatchedGenerationResponse, BatchedTokenizeRequest, BatchedTokenizeResponse,
+        GenerationResponse, ModelInfoRequest, ModelInfoResponse, SingleGenerationRequest,
     },
     utils::trace::trace_context_from_grpc_response,
 };

@@ -14,7 +14,7 @@
  limitations under the License.
 
 */
-use std::collections::{BTreeMap, btree_map};
+use std::collections::{btree_map, BTreeMap};
 
 use super::{Batch, Chunk, DetectionBatcher, Detections};
 
@@ -93,8 +93,8 @@ mod test {
 
     use super::*;
     use crate::orchestrator::{
-        Error,
         types::{Detection, DetectionBatchStream},
+        Error,
     };
 
     #[test]

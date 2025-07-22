@@ -25,7 +25,7 @@ use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{Instrument, error, info, instrument};
+use tracing::{error, info, instrument, Instrument};
 
 use super::Handle;
 use crate::{
@@ -37,11 +37,11 @@ use crate::{
         TextGenTokenClassificationResults,
     },
     orchestrator::{
-        Context, Error, Orchestrator,
         common::{self, validate_detectors},
         types::{
             Chunk, DetectionBatchStream, Detections, GenerationStream, MaxProcessedIndexBatcher,
         },
+        Context, Error, Orchestrator,
     },
 };
 

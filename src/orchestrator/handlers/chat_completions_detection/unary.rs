@@ -17,7 +17,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use futures::future::try_join_all;
-use tracing::{Instrument, error, info, instrument};
+use tracing::{error, info, instrument, Instrument};
 use uuid::Uuid;
 
 use super::ChatCompletionsDetectionTask;
@@ -28,9 +28,9 @@ use crate::{
         DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
     },
     orchestrator::{
-        Context, Error,
         common::{self, validate_detectors},
         types::ChatMessageIterator,
+        Context, Error,
     },
 };
 

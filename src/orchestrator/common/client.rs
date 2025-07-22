@@ -16,14 +16,13 @@
 */
 //! Client helpers
 use futures::{StreamExt, TryStreamExt};
-use http::{HeaderMap, header::CONTENT_TYPE};
+use http::{header::CONTENT_TYPE, HeaderMap};
 use tokio::sync::broadcast;
 use tokio_stream::wrappers::{BroadcastStream, ReceiverStream};
 use tracing::{debug, instrument};
 
 use crate::{
     clients::{
-        GenerationClient, TextContentsDetectorClient,
         chunker::ChunkerClient,
         detector::{
             ChatDetectionRequest, ContentAnalysisRequest, ContextDocsDetectionRequest, ContextType,
@@ -32,12 +31,13 @@ use crate::{
         },
         http::JSON_CONTENT_TYPE,
         openai::{self, OpenAiClient, TokenizeRequest},
+        GenerationClient, TextContentsDetectorClient,
     },
     models::{
         ClassifiedGeneratedTextResult as GenerateResponse, DetectorParams,
         GuardrailsTextGenerationParameters as GenerateParams,
     },
-    orchestrator::{Error, types::*},
+    orchestrator::{types::*, Error},
     pb::caikit::runtime::chunkers::{
         BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
     },

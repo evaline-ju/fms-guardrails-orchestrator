@@ -26,8 +26,8 @@ use crate::{
     config::DetectorType,
     models::{ContextDocsHttpRequest, ContextDocsResult, DetectorParams},
     orchestrator::{
-        Error, Orchestrator,
         common::{self, validate_detectors},
+        Error, Orchestrator,
     },
 };
 

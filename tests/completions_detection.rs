@@ -18,8 +18,8 @@
 use common::{
     openai::COMPLETIONS_ENDPOINT,
     orchestrator::{
-        ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
-        TestOrchestratorServer,
+        TestOrchestratorServer, ORCHESTRATOR_COMPLETIONS_DETECTION_ENDPOINT,
+        ORCHESTRATOR_CONFIG_FILE_PATH,
     },
 };
 use fms_guardrails_orchestr8::{

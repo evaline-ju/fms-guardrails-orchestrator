@@ -29,8 +29,8 @@ use crate::{
         GuardrailsTextGenerationParameters,
     },
     orchestrator::{
-        Error, Orchestrator,
         common::{self, validate_detectors},
+        Error, Orchestrator,
     },
 };
 

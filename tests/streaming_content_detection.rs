@@ -25,8 +25,8 @@ use common::{
     },
     errors::DetectorError,
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
-        TestOrchestratorServer, json_lines_stream,
+        json_lines_stream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
+        ORCHESTRATOR_STREAM_CONTENT_DETECTION_ENDPOINT,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -42,7 +42,7 @@ use fms_guardrails_orchestr8::{
     server,
 };
 use futures::StreamExt;
-use mocktail::{MockSet, server::MockServer};
+use mocktail::{server::MockServer, MockSet};
 use serde_json::json;
 use test_log::test;
 use tracing::debug;

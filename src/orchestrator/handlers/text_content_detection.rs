@@ -25,8 +25,8 @@ use crate::{
     config::DetectorType,
     models::{DetectorParams, TextContentDetectionHttpRequest, TextContentDetectionResult},
     orchestrator::{
-        Error, Orchestrator,
         common::{self, validate_detectors},
+        Error, Orchestrator,
     },
 };
 

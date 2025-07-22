@@ -17,25 +17,24 @@
 //! Processing tasks
 use std::{collections::HashMap, sync::Arc};
 
-use futures::{StreamExt, TryStreamExt, future::try_join_all, stream};
+use futures::{future::try_join_all, stream, StreamExt, TryStreamExt};
 use http::HeaderMap;
 use tokio::sync::{broadcast, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{Instrument, debug, instrument};
+use tracing::{debug, instrument, Instrument};
 
 use super::{client::*, utils::*};
 use crate::{
     clients::{
-        TextContentsDetectorClient,
         chunker::{ChunkerClient, DEFAULT_CHUNKER_ID},
         detector::{
             ContextType, TextChatDetectorClient, TextContextDocDetectorClient,
             TextGenerationDetectorClient,
         },
-        openai,
+        openai, TextContentsDetectorClient,
     },
     models::DetectorParams,
-    orchestrator::{Context, Error, types::*},
+    orchestrator::{types::*, Context, Error},
 };
 
 /// Spawns chunk tasks. Returns a map of chunks.
@@ -670,7 +669,7 @@ mod test {
                 .path(TEXT_CONTENTS_DETECTOR_PATH)
                 .json(ContentAnalysisRequest {
                     contents: vec![
-                        "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.".into(),
+                        "Lorem ipsum dolor sit amet, consectetuer adipiscing elit.".into()
                     ],
                     detector_params: Default::default(),
                 });

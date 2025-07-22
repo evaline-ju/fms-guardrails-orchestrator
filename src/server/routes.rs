@@ -21,19 +21,19 @@ use std::{
 };
 
 use axum::{
-    Json, Router,
     extract::{Query, State},
     http::HeaderMap,
     response::{
-        IntoResponse, Response,
         sse::{Event, KeepAlive, Sse},
+        IntoResponse, Response,
     },
     routing::{get, post},
+    Json, Router,
 };
 use axum_extra::{extract::WithRejection, json_lines::JsonLines};
 use futures::{
-    Stream, StreamExt,
     stream::{self, BoxStream},
+    Stream, StreamExt,
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;

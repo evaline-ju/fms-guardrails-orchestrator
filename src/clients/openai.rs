@@ -22,15 +22,16 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use http_body_util::BodyExt;
 use hyper::{HeaderMap, StatusCode};
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tokio::sync::mpsc;
 use url::Url;
 
 use super::{
-    Client, Error, HttpClient, create_http_client,
+    create_http_client,
     detector::ContentAnalysisResponse,
     http::{HttpClientExt, RequestBody},
+    Client, Error, HttpClient,
 };
 use crate::{
     config::ServiceConfig,

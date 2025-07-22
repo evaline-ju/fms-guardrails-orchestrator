@@ -17,9 +17,9 @@
 use std::error::Error as _;
 
 use axum::{
-    Json,
     extract::rejection::JsonRejection,
     response::{IntoResponse, Response},
+    Json,
 };
 use http::StatusCode;
 use serde::{Deserialize, Serialize};

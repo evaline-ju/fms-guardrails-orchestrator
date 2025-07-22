@@ -25,8 +25,8 @@ use crate::{
     config::DetectorType,
     models::{DetectionOnGeneratedHttpRequest, DetectionOnGenerationResult, DetectorParams},
     orchestrator::{
-        Error, Orchestrator,
         common::{self, validate_detectors},
+        Error, Orchestrator,
     },
 };
 

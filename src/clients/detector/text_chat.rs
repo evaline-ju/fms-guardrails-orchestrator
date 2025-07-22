@@ -20,12 +20,13 @@ use hyper::HeaderMap;
 use serde::Serialize;
 use tracing::info;
 
-use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
+use super::{DetectorClient, DetectorClientExt, DEFAULT_PORT};
 use crate::{
     clients::{
-        Client, Error, HttpClient, create_http_client,
+        create_http_client,
         http::HttpClientExt,
         openai::{Message, Tool},
+        Client, Error, HttpClient,
     },
     config::ServiceConfig,
     health::HealthCheckResult,

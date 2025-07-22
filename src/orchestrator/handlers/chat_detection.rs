@@ -26,8 +26,8 @@ use crate::{
     config::DetectorType,
     models::{ChatDetectionHttpRequest, ChatDetectionResult, DetectorParams},
     orchestrator::{
-        Error, Orchestrator,
         common::{self, validate_detectors},
+        Error, Orchestrator,
     },
 };
 

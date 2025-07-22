@@ -26,14 +26,14 @@ use opentelemetry::{
 use opentelemetry_http::{HeaderExtractor, HeaderInjector};
 use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig, WithHttpConfig};
 use opentelemetry_sdk::{
-    Resource,
     metrics::{PeriodicReader, SdkMeterProvider},
     propagation::TraceContextPropagator,
     trace::Sampler,
+    Resource,
 };
-use tracing::{Span, error, info, info_span};
+use tracing::{error, info, info_span, Span};
 use tracing_opentelemetry::{MetricsLayer, OpenTelemetrySpanExt};
-use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt};
+use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer};
 
 use crate::{
     args::{LogFormat, OtlpProtocol, TracingConfig},

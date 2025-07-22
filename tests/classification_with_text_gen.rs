@@ -31,8 +31,8 @@ use common::{
         GENERATION_NLP_UNARY_ENDPOINT,
     },
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_UNARY_ENDPOINT,
-        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, TestOrchestratorServer,
+        TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_UNARY_ENDPOINT,
+        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -1332,11 +1332,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     let results = response.json::<server::Error>().await?;
     debug!("{results:#?}");
     assert_eq!(results.code, StatusCode::UNPROCESSABLE_ENTITY);
-    assert!(
-        results
-            .details
-            .starts_with("non_existing_field: unknown field `non_existing_field`")
-    );
+    assert!(results
+        .details
+        .starts_with("non_existing_field: unknown field `non_existing_field`"));
 
     // Invalid input detector scenario
     let response = orchestrator_server

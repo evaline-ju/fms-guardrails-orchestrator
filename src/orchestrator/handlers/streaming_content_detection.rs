@@ -16,21 +16,21 @@
 */
 use std::{collections::HashMap, pin::Pin, sync::Arc};
 
-use futures::{Stream, StreamExt, stream::Peekable};
+use futures::{stream::Peekable, Stream, StreamExt};
 use http::HeaderMap;
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
-use tracing::{Instrument, error, info, instrument};
+use tracing::{error, info, instrument, Instrument};
 
 use super::Handle;
 use crate::{
     config::DetectorType,
     models::{DetectorParams, StreamingContentDetectionRequest, StreamingContentDetectionResponse},
     orchestrator::{
-        Context, Error, Orchestrator,
         common::{self, validate_detectors},
         types::{BoxStream, DetectionBatchStream, MaxProcessedIndexBatcher},
+        Context, Error, Orchestrator,
     },
 };
 

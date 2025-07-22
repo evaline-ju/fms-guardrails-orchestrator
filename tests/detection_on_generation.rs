@@ -24,8 +24,8 @@ use common::{
     },
     errors::DetectorError,
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT,
-        TestOrchestratorServer,
+        TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
+        ORCHESTRATOR_DETECTION_ON_GENERATION_ENDPOINT,
     },
 };
 use fms_guardrails_orchestr8::{

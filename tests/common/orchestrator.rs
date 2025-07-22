@@ -27,15 +27,15 @@ use bytes::Bytes;
 use eventsource_stream::{EventStream, Eventsource};
 use fms_guardrails_orchestr8::{config::OrchestratorConfig, orchestrator::Orchestrator, server};
 use futures::{
-    Stream, StreamExt,
     stream::{
         BoxStream, {self},
     },
+    Stream, StreamExt,
 };
 use mocktail::server::MockServer;
-use rand::{Rng, SeedableRng, rngs::SmallRng};
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 use rustls::crypto::ring;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use tracing::{error, warn};
 use url::Url;
 

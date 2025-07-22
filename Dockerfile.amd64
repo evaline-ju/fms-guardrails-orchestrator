@@ -9,7 +9,12 @@ ARG PROTOC_VERSION
 
 ENV CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 
-RUN microdnf install -y rust cargo && \
+RUN microdnf -y update && \
+    microdnf clean all
+
+# Apparently only 1.84
+# The package requires the Cargo feature called `edition2024`, but that feature is not stabilized in this version of Cargo (1.84.1 (66221abde 2024-11-19)).
+RUN microdnf install -y rust cargo unzip openssl-devel pkgconf-pkg-config && \
     microdnf clean all
 
 # Install protoc, no longer included in prost crate
@@ -22,7 +27,7 @@ WORKDIR /app
 
 COPY rust-toolchain.toml rust-toolchain.toml
 
-RUN rustup component add rustfmt
+# No rustup
 
 ## Orchestrator builder #########################################################
 FROM rust-builder AS fms-guardrails-orchestr8-builder
@@ -37,6 +42,7 @@ COPY tests/ /app/tests/
 WORKDIR /app
 
 # TODO: Make releases via cargo-release
+# Otherwise need to regress 2024 edition
 RUN cargo build --release
 # Copy test resources required for executing unit tests
 COPY tests/resources /app/tests/resources

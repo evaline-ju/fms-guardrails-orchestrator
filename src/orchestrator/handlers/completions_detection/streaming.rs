@@ -16,10 +16,10 @@
 */
 use std::{collections::HashMap, sync::Arc};
 
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::{stream, StreamExt, TryStreamExt};
 use opentelemetry::trace::TraceId;
 use tokio::sync::mpsc;
-use tracing::{Instrument, debug, error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn, Instrument};
 use uuid::Uuid;
 
 use super::CompletionsDetectionTask;
@@ -30,12 +30,12 @@ use crate::{
         DetectionWarningReason, DetectorParams, UNSUITABLE_INPUT_MESSAGE, UNSUITABLE_OUTPUT_MESSAGE,
     },
     orchestrator::{
-        Context, Error,
         common::{self, text_contents_detections, validate_detectors},
         types::{
             Chunk, CompletionBatcher, CompletionState, CompletionStream, DetectionBatchStream,
             Detections,
         },
+        Context, Error,
     },
 };
 
@@ -346,13 +346,14 @@ async fn process_completion_stream(
                         return;
                     }
                 }
-                if let Some(usage) = &completion.usage
-                    && completion.choices.is_empty()
-                {
-                    // Update state: set usage
-                    // NOTE: this message has no choices and is not sent to detection input channel
-                    if let Some(state) = &completion_state {
-                        state.set_usage(usage.clone());
+                // 2021 regression
+                if let Some(usage) = &completion.usage {
+                    if completion.choices.is_empty() {
+                        // Update state: set usage
+                        // NOTE: this message has no choices and is not sent to detection input channel
+                        if let Some(state) = &completion_state {
+                            state.set_usage(usage.clone());
+                        }
                     }
                 } else {
                     if message_index == 0 {

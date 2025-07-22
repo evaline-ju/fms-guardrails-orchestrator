@@ -4381,11 +4381,9 @@ async fn openai_bad_request_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    assert!(
-        messages[0]
-            .as_ref()
-            .is_err_and(|e| e.code == http::StatusCode::BAD_REQUEST)
-    );
+    assert!(messages[0]
+        .as_ref()
+        .is_err_and(|e| e.code == http::StatusCode::BAD_REQUEST));
 
     Ok(())
 }
@@ -4448,11 +4446,9 @@ async fn openai_stream_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    assert!(
-        messages[0]
-            .as_ref()
-            .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR)
-    );
+    assert!(messages[0]
+        .as_ref()
+        .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR));
 
     Ok(())
 }
@@ -4738,11 +4734,9 @@ async fn chunker_internal_server_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    assert!(
-        messages[0]
-            .as_ref()
-            .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR)
-    );
+    assert!(messages[0]
+        .as_ref()
+        .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR));
 
     Ok(())
 }
@@ -5075,11 +5069,9 @@ async fn detector_internal_server_error() -> Result<(), anyhow::Error> {
     assert_eq!(messages.len(), 1, "unexpected number of messages");
 
     // Validate error message
-    assert!(
-        messages[0]
-            .as_ref()
-            .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR)
-    );
+    assert!(messages[0]
+        .as_ref()
+        .is_err_and(|e| e.code == StatusCode::INTERNAL_SERVER_ERROR));
 
     Ok(())
 }

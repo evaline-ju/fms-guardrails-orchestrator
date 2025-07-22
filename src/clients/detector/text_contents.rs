@@ -22,9 +22,9 @@ use hyper::HeaderMap;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
-use super::{DEFAULT_PORT, DetectorClient, DetectorClientExt};
+use super::{DetectorClient, DetectorClientExt, DEFAULT_PORT};
 use crate::{
-    clients::{Client, Error, HttpClient, create_http_client, http::HttpClientExt},
+    clients::{create_http_client, http::HttpClientExt, Client, Error, HttpClient},
     config::ServiceConfig,
     health::HealthCheckResult,
     models::{DetectorParams, EvidenceObj, Metadata},

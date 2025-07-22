@@ -23,7 +23,7 @@ use common::{
     },
     errors::DetectorError,
     orchestrator::{
-        ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH, TestOrchestratorServer,
+        TestOrchestratorServer, ORCHESTRATOR_CHAT_DETECTION_ENDPOINT, ORCHESTRATOR_CONFIG_FILE_PATH,
     },
 };
 use fms_guardrails_orchestr8::{

@@ -33,8 +33,8 @@ use common::{
         GENERATION_NLP_TOKENIZATION_ENDPOINT,
     },
     orchestrator::{
-        ORCHESTRATOR_CONFIG_FILE_PATH, ORCHESTRATOR_STREAMING_ENDPOINT,
-        ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE, SseStream, TestOrchestratorServer,
+        SseStream, TestOrchestratorServer, ORCHESTRATOR_CONFIG_FILE_PATH,
+        ORCHESTRATOR_STREAMING_ENDPOINT, ORCHESTRATOR_UNSUITABLE_INPUT_MESSAGE,
     },
 };
 use fms_guardrails_orchestr8::{
@@ -689,11 +689,9 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert!(
-        messages[0]
-            .as_ref()
-            .is_err_and(|error| *error == orchestrator_error_500)
-    );
+    assert!(messages[0]
+        .as_ref()
+        .is_err_and(|error| *error == orchestrator_error_500));
     // Test error from detector
     let response = orchestrator_server
         .post(ORCHESTRATOR_STREAMING_ENDPOINT)
@@ -720,11 +718,9 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert!(
-        messages[0]
-            .as_ref()
-            .is_err_and(|error| *error == orchestrator_error_500)
-    );
+    assert!(messages[0]
+        .as_ref()
+        .is_err_and(|error| *error == orchestrator_error_500));
 
     // Test error from generation server
     let response = orchestrator_server
@@ -752,11 +748,9 @@ async fn input_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert!(
-        messages[0]
-            .as_ref()
-            .is_err_and(|error| *error == orchestrator_error_500)
-    );
+    assert!(messages[0]
+        .as_ref()
+        .is_err_and(|error| *error == orchestrator_error_500));
 
     Ok(())
 }
@@ -791,11 +785,9 @@ async fn orchestrator_validation_error() -> Result<(), anyhow::Error> {
     assert_eq!(response.status(), 422);
     let response_body = response.json::<server::Error>().await?;
     assert_eq!(response_body.code, 422);
-    assert!(
-        response_body
-            .details
-            .starts_with("non_existing_field: unknown field `non_existing_field`")
-    );
+    assert!(response_body
+        .details
+        .starts_with("non_existing_field: unknown field `non_existing_field`"));
 
     // Invalid input detector scenario
     let response = orchestrator_server
@@ -1788,11 +1780,9 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
     debug!("{messages:#?}");
 
     assert_eq!(messages.len(), 1);
-    assert!(
-        messages[0]
-            .as_ref()
-            .is_err_and(|error| *error == orchestrator_error_500)
-    );
+    assert!(messages[0]
+        .as_ref()
+        .is_err_and(|error| *error == orchestrator_error_500));
 
     // assert detector error
     let response = orchestrator_server
@@ -1823,11 +1813,9 @@ async fn output_detector_client_error() -> Result<(), anyhow::Error> {
             && msg.start_index == Some(0)
             && msg.processed_index == Some(11)
     }),);
-    assert!(
-        messages[1]
-            .as_ref()
-            .is_err_and(|error| *error == orchestrator_error_500)
-    );
+    assert!(messages[1]
+        .as_ref()
+        .is_err_and(|error| *error == orchestrator_error_500));
 
     Ok(())
 }

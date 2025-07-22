@@ -25,19 +25,19 @@ use tonic::{Code, Request, Response, Status, Streaming};
 use tracing::Span;
 
 use super::{
-    BoxStream, Client, Error, create_grpc_client, errors::grpc_to_http_code,
-    grpc_request_with_headers, otel_grpc::OtelGrpcService,
+    create_grpc_client, errors::grpc_to_http_code, grpc_request_with_headers,
+    otel_grpc::OtelGrpcService, BoxStream, Client, Error,
 };
 use crate::{
     config::ServiceConfig,
     health::{HealthCheckResult, HealthStatus},
     pb::{
         caikit::runtime::chunkers::{
-            BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
             chunkers_service_client::ChunkersServiceClient,
+            BidiStreamingChunkerTokenizationTaskRequest, ChunkerTokenizationTaskRequest,
         },
         caikit_data_model::nlp::{ChunkerTokenizationStreamResult, TokenizationResults},
-        grpc::health::v1::{HealthCheckRequest, health_client::HealthClient},
+        grpc::health::v1::{health_client::HealthClient, HealthCheckRequest},
     },
     utils::trace::trace_context_from_grpc_response,
 };
