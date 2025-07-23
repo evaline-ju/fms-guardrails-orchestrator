@@ -14,7 +14,7 @@ RUN microdnf -y update && \
 
 # Apparently only 1.84
 # The package requires the Cargo feature called `edition2024`, but that feature is not stabilized in this version of Cargo (1.84.1 (66221abde 2024-11-19)).
-RUN microdnf install -y rust cargo unzip openssl-devel pkgconf-pkg-config && \
+RUN microdnf install -y rust-toolset unzip openssl-devel pkgconf-pkg-config && \
     microdnf clean all
 
 # Install protoc, no longer included in prost crate
